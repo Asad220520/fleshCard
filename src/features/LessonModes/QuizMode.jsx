@@ -1,19 +1,24 @@
 import { useEffect, useState, useCallback } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { markLearned, selectLesson } from "../../store/store";
 import { lessons } from "../../data";
 // Импорт иконок
-import { HiCheck, HiX, HiArrowRight } from "react-icons/hi";
+import { HiCheck, HiX, HiArrowRight, HiArrowLeft } from "react-icons/hi"; // 🆕 Добавил HiArrowLeft
+
+// 🆕 КОНСТАНТА: Максимальное количество слов в одной учебной сессии
+const MAX_SESSION_SIZE = 15;
 
 export default function QuizMode() {
   const { lessonId } = useParams();
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const { list, learned } = useSelector((state) => state.words);
 
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState(null);
   const [options, setOptions] = useState([]);
+  const [sessionList, setSessionList] = useState([]);
 
   // Загружаем урок, если нет списка
   useEffect(() => {
@@ -22,22 +27,34 @@ export default function QuizMode() {
     }
   }, [list, dispatch, lessonId]);
 
-  // Список невыученных слов
-  const remainingList =
+  // Список всех невыученных слов (весь пул)
+  const allRemainingList =
     list?.filter(
       (w) => !learned.some((lw) => lw.de === w.de && lw.lessonId === w.lessonId)
     ) || [];
 
-  const current = remainingList[index] || null;
+  const totalRemaining = allRemainingList.length;
 
-  // Сбрасываем индекс, если вышли за границы
+  // 1. Инициализация sessionList (батча) при загрузке
   useEffect(() => {
-    if (index >= remainingList.length && remainingList.length > 0) {
-      setIndex(0);
+    if (allRemainingList.length > 0 && sessionList.length === 0) {
+      // Берем батч из первых MAX_SESSION_SIZE невыученных слов
+      const initialBatch = allRemainingList.slice(0, MAX_SESSION_SIZE);
+      setSessionList(initialBatch);
     }
-  }, [remainingList.length, index]);
+  }, [allRemainingList, sessionList.length]);
 
-  // Генерируем варианты
+  const current = sessionList[index] || null;
+
+  // 2. Проверка завершения сессии (батча)
+  useEffect(() => {
+    if (sessionList.length > 0 && index >= sessionList.length) {
+      // Сессия завершена. Перенаправляем для перезапуска или финального сообщения.
+      navigate(`/lesson/${lessonId}`, { state: { quizComplete: true } });
+    }
+  }, [index, sessionList.length, totalRemaining, lessonId, navigate]);
+
+  // Генерируем варианты (зависит от current, который теперь из sessionList)
   useEffect(() => {
     if (!current) {
       setOptions([]);
@@ -48,8 +65,10 @@ export default function QuizMode() {
     const allWords = Object.values(lessons).flat();
     // Фильтруем пул слов, исключая текущее слово
     const pool = allWords.filter((w) => w.de !== current.de);
+
     // Выбираем 3 случайных неправильных варианта
     const shuffled = pool.sort(() => Math.random() - 0.5).slice(0, 3);
+
     // Добавляем правильный вариант и перемешиваем
     const opts = [...shuffled, current].sort(() => Math.random() - 0.5);
     setOptions(opts);
@@ -59,39 +78,46 @@ export default function QuizMode() {
   const advance = useCallback(
     (delay = 500) => {
       setTimeout(() => {
-        setIndex((i) => (i + 1 < remainingList.length ? i + 1 : 0));
+        // Переход к следующему индексу в рамках sessionList
+        setIndex((i) =>
+          i + 1 < sessionList.length ? i + 1 : sessionList.length
+        );
         setSelected(null);
       }, delay);
     },
-    [remainingList.length]
+    [sessionList.length]
   );
 
   const handleSelect = (opt) => {
     setSelected(opt);
-    // Если ответ верный, переходим к следующему слову с задержкой, чтобы пользователь увидел зеленый цвет.
-    if (opt.de === current.de) advance(1000);
+    // Если ответ верный, помечаем его как выученный (в Redux) и переходим
+    if (opt.de === current.de) {
+      dispatch(markLearned({ word: current }));
+      advance(1000); // С задержкой, чтобы увидеть зеленый
+    }
+    // Если ответ неверный, просто ждем, пока пользователь не нажмет "Далее"
   };
 
   const handleKnow = () => {
     if (current) {
+      // Mark as learned
       dispatch(markLearned({ word: current }));
-      // Если слово выучено, переходим к следующему без задержки
-      // (remainingList.length изменится, нужно обновить index)
-      setTimeout(() => {
-        if (remainingList.length > 1) {
-          setIndex((i) => (i < remainingList.length - 1 ? i : 0));
-        } else {
-          setIndex(0);
-        }
-      }, 50);
+      // Переходим к следующему слову немедленно
+      advance(0);
     }
   };
 
-  const handleDontKnow = () => advance(0); // Переход к следующему без задержки
+  const handleDontKnow = () => advance(0); // Пропустить и повторить позже
 
-  if (remainingList.length === 0)
+  // 🆕 Функция для кнопки "Назад"
+  const handleGoBack = () => {
+    navigate(`/lesson/${lessonId}`);
+  };
+
+  // 1. Если все слова в уроке выучены
+  if (totalRemaining === 0)
     return (
-      <div className="p-12 text-green-600 text-center text-xl font-semibold bg-white rounded-xl shadow-lg m-6">
+      <div className="p-12 text-green-600 text-center text-xl font-semibold bg-white rounded-xl shadow-lg m-6 dark:bg-gray-800 dark:text-green-400 dark:shadow-2xl">
         <span role="img" aria-label="party popper" className="text-3xl">
           🎉
         </span>{" "}
@@ -99,18 +125,37 @@ export default function QuizMode() {
       </div>
     );
 
+  // 2. Если батч еще не загружен
+  if (sessionList.length === 0) return null;
+
   return (
-    <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)]">
+    <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
+      {/* 🆕 Кнопка Назад (Добавлен новый блок) */}
+      <div className="w-full max-w-lg mb-4 self-center">
+        <button
+          onClick={handleGoBack}
+          className="flex items-center text-sky-700 hover:text-sky-800 transition font-semibold dark:text-sky-400 dark:hover:text-sky-300"
+        >
+          <HiArrowLeft className="w-6 h-6 mr-1" />
+          <span className="hidden sm:inline">
+            К уроку {lessonId.toUpperCase()}
+          </span>
+        </button>
+      </div>
+
       {/* Прогресс */}
       <div className="w-full max-w-lg mb-6 text-center">
-        <div className="text-sm font-medium text-gray-600 mb-2">
-          Вопрос {index + 1} из {remainingList.length}
+        <div className="text-sm font-medium text-gray-600 mb-2 dark:text-gray-400">
+          Вопрос {index + 1} из {sessionList.length} (Батч)
+          <span className="block text-xs text-gray-400 mt-1 dark:text-gray-500">
+            Осталось всего невыученных: {totalRemaining}
+          </span>
         </div>
         {/* Индикатор прогресса */}
-        <div className="w-full bg-gray-200 rounded-full h-2.5">
+        <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
           <div
             className="bg-sky-500 h-2.5 rounded-full transition-all duration-300"
-            style={{ width: `${((index + 1) / remainingList.length) * 100}%` }}
+            style={{ width: `${((index + 1) / sessionList.length) * 100}%` }}
           ></div>
         </div>
       </div>
@@ -128,20 +173,21 @@ export default function QuizMode() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-lg">
         {options.map((opt, i) => {
           let cls =
-            "bg-white border-2 border-gray-200 hover:bg-sky-50 transition duration-150";
+            "bg-white border-2 border-gray-200 hover:bg-sky-50 transition duration-150 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-50 dark:hover:bg-gray-700";
 
           if (selected) {
             if (opt.de === current?.de) {
               // Правильный ответ
               cls =
-                "bg-green-500 text-white border-green-700 shadow-lg scale-[1.02]";
+                "bg-green-500 text-white border-green-700 shadow-lg scale-[1.02] dark:bg-green-600 dark:border-green-800";
             } else if (opt.de === selected.de) {
               // Неправильный ответ, который был выбран
               cls =
-                "bg-red-500 text-white border-red-700 shadow-lg scale-[1.02]";
+                "bg-red-500 text-white border-red-700 shadow-lg scale-[1.02] dark:bg-red-600 dark:border-red-800";
             } else {
               // Невыбранный неправильный ответ
-              cls = "bg-gray-200 text-gray-500 border-gray-300";
+              cls =
+                "bg-gray-200 text-gray-500 border-gray-300 dark:bg-gray-700 dark:text-gray-400 dark:border-gray-600";
             }
           }
 
@@ -150,7 +196,7 @@ export default function QuizMode() {
               key={i}
               onClick={() => handleSelect(opt)}
               disabled={!!selected}
-              className={`p-4 rounded-xl shadow-md text-lg font-semibold text-gray-800 text-left ${cls} disabled:opacity-100 disabled:cursor-not-allowed`}
+              className={`p-4 rounded-xl shadow-md text-lg font-semibold text-gray-800 dark:text-gray-50 text-left ${cls} disabled:opacity-100 disabled:cursor-not-allowed`}
             >
               {opt.ru}
             </button>
@@ -165,7 +211,7 @@ export default function QuizMode() {
             {/* Знаю (пропустить и отметить как выученное) */}
             <button
               onClick={handleKnow}
-              className="flex-1 px-6 py-3 bg-green-500 text-white rounded-xl shadow-md font-bold hover:bg-green-600 transition duration-150"
+              className="flex-1 px-6 py-3 bg-green-500 text-white rounded-xl shadow-md font-bold hover:bg-green-600 transition duration-150 dark:bg-green-600 dark:hover:bg-green-700"
             >
               <div className="flex items-center justify-center">
                 <HiCheck className="w-5 h-5 mr-2" />Я знаю это слово
@@ -174,7 +220,7 @@ export default function QuizMode() {
             {/* Не знаю (пропустить и повторить позже) */}
             <button
               onClick={handleDontKnow}
-              className="flex-1 px-6 py-3 bg-red-500 text-white rounded-xl shadow-md font-bold hover:bg-red-600 transition duration-150"
+              className="flex-1 px-6 py-3 bg-red-500 text-white rounded-xl shadow-md font-bold hover:bg-red-600 transition duration-150 dark:bg-red-600 dark:hover:bg-red-700"
             >
               <div className="flex items-center justify-center">
                 <HiX className="w-5 h-5 mr-2" />
@@ -188,7 +234,7 @@ export default function QuizMode() {
         {selected && selected.de !== current?.de && (
           <button
             onClick={() => advance(0)}
-            className="w-full px-6 py-3 bg-sky-600 text-white rounded-xl shadow-md font-bold hover:bg-sky-700 transition duration-150"
+            className="w-full px-6 py-3 bg-sky-600 text-white rounded-xl shadow-md font-bold hover:bg-sky-700 transition duration-150 dark:bg-sky-700 dark:hover:bg-sky-800"
           >
             <div className="flex items-center justify-center">
               Далее

@@ -1,35 +1,30 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { useParams } from "react-router-dom";
-import { selectLesson, markLearned } from "../../store/store"; // Добавил markLearned, чтобы отметить урок как выученный при завершении
+import { useParams, useNavigate } from "react-router-dom";
+import { selectLesson, markLearned } from "../../store/store";
 import { lessons } from "../../data";
 
 // Иконки для обратной связи
-import { HiCheckCircle, HiChevronRight } from "react-icons/hi";
+import { HiCheckCircle, HiChevronRight, HiArrowLeft } from "react-icons/hi";
 
+// КОНСТАНТА: Максимальное количество слов в одном раунде
 const CHUNK_SIZE = 5;
 
 export default function MatchingMode() {
   const { lessonId } = useParams();
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const { list, learned } = useSelector((state) => state.words);
 
   const [round, setRound] = useState(0);
   const [chunk, setChunk] = useState([]);
   const [left, setLeft] = useState([]);
   const [right, setRight] = useState([]);
-  const [selectedLeft, setSelectedLeft] = useState(null); // Хранит { de: 'Wort', ru: 'Слово' }
-  const [matched, setMatched] = useState([]); // Хранит список de-слов, которые совпали
-  const [incorrectRight, setIncorrectRight] = useState(null); // Для подсветки неправильного выбора
+  const [selectedLeft, setSelectedLeft] = useState(null);
+  const [matched, setMatched] = useState([]);
+  const [incorrectRight, setIncorrectRight] = useState(null);
 
-  // --- Эффекты загрузки и подготовки данных ---
-
-  // 1. Загружаем урок, если списка нет
-  useEffect(() => {
-    if ((!list || list.length === 0) && lessons[lessonId]) {
-      dispatch(selectLesson({ words: lessons[lessonId], lessonId }));
-    }
-  }, [list, dispatch, lessonId]);
+  // --- Расчет пула слов ---
 
   // Список оставшихся слов (невыученных)
   const remainingList =
@@ -43,8 +38,22 @@ export default function MatchingMode() {
     chunks.push(remainingList.slice(i, i + CHUNK_SIZE));
   }
 
-  // 2. Загружаем текущий раунд
+  // Выученные слова в этом уроке (для общего прогресса)
+  const totalWordsInLesson = list.filter((w) => w.lessonId === lessonId).length;
+  const totalCompleted = totalWordsInLesson - remainingList.length;
+
+  // --- Эффекты загрузки и подготовки данных ---
+
+  // 1. Загружаем урок, если списка нет
   useEffect(() => {
+    if ((!list || list.length === 0) && lessons[lessonId]) {
+      dispatch(selectLesson({ words: lessons[lessonId], lessonId }));
+    }
+  }, [list, dispatch, lessonId]);
+
+  // 2. Загружаем текущий раунд (БЕЗ зависимости remainingList.length)
+  useEffect(() => {
+    // Условие выхода, если все раунды завершены или нет слов
     if (chunks.length === 0 || round >= chunks.length) return;
 
     const current = chunks[round] || [];
@@ -60,7 +69,7 @@ export default function MatchingMode() {
     setMatched([]);
     setSelectedLeft(null);
     setIncorrectRight(null);
-  }, [round, list, learned, remainingList.length]); // Зависимость от remainingList.length важна для обновления при завершении раунда
+  }, [round, list, learned]); // ✅ Убрана зависимость remainingList.length
 
   // --- Обработчики кликов ---
 
@@ -80,8 +89,13 @@ export default function MatchingMode() {
     if (word.de === selectedLeft.de) {
       // Верное совпадение
       setMatched((m) => [...m, word.de]);
-      setSelectedLeft(null); // Снимаем выбор
       setIncorrectRight(null);
+
+      // markLearned: Помечаем слово как выученное сразу после верного совпадения
+      dispatch(markLearned({ word: selectedLeft }));
+
+      // Снимаем выбор ПОСЛЕ диспатча и совпадения, чтобы избежать "прыжка"
+      setSelectedLeft(null);
     } else {
       // Неверное совпадение
       setIncorrectRight(word.de);
@@ -90,93 +104,128 @@ export default function MatchingMode() {
     }
   };
 
+  const handleGoBack = () => navigate(`/lesson/${lessonId}`);
+
   // --- Переход к следующему раунду ---
 
   useEffect(() => {
+    // Проверяем, совпали ли все слова в текущем чанке
     if (chunk.length > 0 && matched.length === chunk.length) {
-      // При завершении раунда, если это был последний, помечаем слова как выученные
-      if (round === chunks.length - 1) {
-        chunk.forEach((word) => dispatch(markLearned({ word })));
-      }
-
+      // Переход к следующему раунду с задержкой
       setTimeout(() => {
         setRound((r) => r + 1);
       }, 800);
     }
-  }, [matched, chunk, round, chunks.length, dispatch]);
+  }, [matched, chunk, dispatch]);
 
   // --- UI Рендеринг ---
 
-  // Сообщение о завершении
-  if (round >= chunks.length && remainingList.length === 0) {
+  // Сообщение о завершении урока
+  if (totalCompleted === totalWordsInLesson && totalWordsInLesson > 0) {
     return (
-      <div className="flex flex-col items-center p-8 bg-gray-50 min-h-[50vh]">
-        <div className="text-center p-8 text-green-700 bg-white rounded-xl shadow-lg border-2 border-green-400 m-6 max-w-sm">
-          <HiCheckCircle className="w-10 h-10 mx-auto mb-3 text-green-500" />
-          <h2 className="text-2xl font-bold">Урок завершен!</h2>
-          <p className="mt-2 text-gray-600">
+      <div className="flex flex-col items-center p-8 bg-gray-50 min-h-[50vh] dark:bg-gray-900 transition-colors duration-300">
+        <div className="text-center p-8 text-green-700 bg-white rounded-xl shadow-xl border-4 border-green-500 m-6 max-w-sm dark:bg-gray-800 dark:border-green-600 dark:shadow-2xl">
+          <HiCheckCircle className="w-12 h-12 mx-auto mb-4 text-green-500 dark:text-green-400" />
+          <h2 className="text-2xl font-bold dark:text-gray-50">
+            Урок {lessonId.toUpperCase()} завершен!
+          </h2>
+          <p className="mt-2 text-gray-600 dark:text-gray-300">
             Все слова были успешно сопоставлены. Отличная работа! 🎉
           </p>
+          <button
+            onClick={handleGoBack}
+            className="mt-4 px-4 py-2 bg-sky-500 text-white rounded-xl hover:bg-sky-600 transition font-semibold dark:bg-sky-600 dark:hover:bg-sky-700"
+          >
+            К уроку
+          </button>
         </div>
       </div>
     );
   }
 
   // Сообщение о загрузке или пустом списке
-  if (chunks.length === 0 && list && list.length > 0) {
+  if (totalWordsInLesson === 0) {
     return (
-      <div className="p-6 text-gray-500 text-center">
-        Все слова уже выучены.
+      <div className="p-6 text-gray-500 text-center dark:bg-gray-900 dark:text-gray-400 min-h-screen">
+        Загрузка урока...
       </div>
     );
   }
 
-  if (chunks.length === 0) {
-    return (
-      <div className="p-6 text-gray-500 text-center">Загрузка урока...</div>
-    );
-  }
+  // Если раунды есть, но текущий раунд не загружен (происходит между раундами)
+  if (!chunk.length && chunks.length > 0) return null;
 
   // Основной интерфейс
   return (
-    <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)]">
+    <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
+      {/* Заголовок и Навигация */}
+      <div className="w-full max-w-lg mb-6 flex justify-between items-center">
+        <button
+          onClick={handleGoBack}
+          className="flex items-center text-sky-700 hover:text-sky-800 transition font-semibold dark:text-sky-400 dark:hover:text-sky-300"
+        >
+          <HiArrowLeft className="w-6 h-6 mr-1" />
+          <span className="hidden sm:inline">К уроку</span>
+        </button>
+        <h1 className="text-2xl font-extrabold text-gray-800 dark:text-gray-50">
+          Сопоставление: {lessonId.toUpperCase()}
+        </h1>
+        <div className="w-12"></div> {/* Для выравнивания */}
+      </div>
+
       {/* Прогресс */}
-      <div className="w-full max-w-lg mb-6 text-center">
-        <h2 className="text-xl font-bold text-gray-700 mb-2">
-          Раунд {round + 1} из {chunks.length}
+      <div className="w-full max-w-lg mb-8 bg-white p-4 rounded-xl shadow-md border border-gray-100 dark:bg-gray-800 dark:shadow-xl dark:border-gray-700">
+        <h2 className="text-sm font-semibold text-gray-700 mb-2 dark:text-gray-300">
+          Прогресс: Раунд {round + 1} из {chunks.length}
         </h2>
-        <div className="w-full bg-gray-200 rounded-full h-2.5">
+
+        {/* Индикатор прогресса раунда */}
+        <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
           <div
-            className="bg-purple-500 h-2.5 rounded-full transition-all duration-300"
-            style={{ width: `${((round + 1) / chunks.length) * 100}%` }}
+            className="bg-purple-500 h-2 rounded-full transition-all duration-300"
+            style={{ width: `${(matched.length / chunk.length) * 100}%` }}
+            title={`Совпало ${matched.length} из ${chunk.length} в раунде`}
           ></div>
+        </div>
+
+        {/* Общий прогресс урока */}
+        <div className="mt-3 text-xs text-gray-500 flex justify-between dark:text-gray-400">
+          <span>
+            Выучено: {totalCompleted} из {totalWordsInLesson}
+          </span>
+          <span>Осталось в пуле: {remainingList.length}</span>
         </div>
       </div>
 
       {/* Контейнер для колонок */}
-      <div className="w-full max-w-lg flex flex-col sm:flex-row gap-4 sm:gap-6 mt-4">
-        {/* Колонка 1: Немецкие слова */}
-        <div className="flex-1 flex flex-col gap-3">
-          <h3 className="text-lg font-semibold text-gray-700 mb-1">Слово</h3>
+      <div className="w-full max-w-lg flex gap-4 sm:gap-8 mt-4">
+        {/* Колонка 1: Немецкие слова (Левая) */}
+        <div className="flex-1 flex flex-col gap-3 p-3 bg-white rounded-xl shadow-lg border border-gray-100 dark:bg-gray-800 dark:shadow-xl dark:border-gray-700">
+          <h3 className="text-lg font-bold text-purple-600 mb-2 dark:text-purple-400">
+            Немецкий (Wort)
+          </h3>
           {left.map((w) => {
             const isMatched = matched.includes(w.de);
             const isSelected = selectedLeft?.de === w.de;
 
-            let cls = "bg-white border-b-2 border-sky-100 hover:bg-sky-50";
+            let cls =
+              "bg-purple-50 border-2 border-purple-100 hover:bg-purple-100 text-gray-800 dark:bg-gray-700 dark:border-gray-600 dark:hover:bg-gray-600 dark:text-gray-50";
             if (isMatched) {
+              // Совпавший элемент
               cls =
-                "bg-green-100 text-green-700 border-green-400 pointer-events-none";
+                "bg-green-100 text-green-700 border-green-400 pointer-events-none opacity-60 dark:bg-green-900 dark:text-green-300 dark:border-green-600";
             } else if (isSelected) {
+              // Выбранный элемент
               cls =
-                "bg-sky-500 text-white border-sky-700 shadow-md scale-[1.01]";
+                "bg-purple-500 text-white border-purple-700 shadow-xl scale-[1.02]";
             }
 
             return (
               <button
-                key={w.de + "left"} // Уникальный ключ
+                key={w.de + "left"}
                 disabled={isMatched}
                 onClick={() => handleLeftSelect(w)}
-                className={`p-4 rounded-xl shadow-md text-lg font-medium text-left transition duration-150 transform ${cls}`}
+                className={`p-3 rounded-lg text-lg font-medium text-center transition duration-150 transform ${cls}`}
               >
                 {w.de}
               </button>
@@ -186,33 +235,40 @@ export default function MatchingMode() {
 
         {/* Разделитель */}
         <div className="hidden sm:flex items-center justify-center">
-          <HiChevronRight className="w-8 h-8 text-gray-400" />
+          <HiChevronRight className="w-10 h-10 text-purple-400" />
         </div>
 
-        {/* Колонка 2: Русские слова */}
-        <div className="flex-1 flex flex-col gap-3">
-          <h3 className="text-lg font-semibold text-gray-700 mb-1">Перевод</h3>
+        {/* Колонка 2: Русские слова (Правая) */}
+        <div className="flex-1 flex flex-col gap-3 p-3 bg-white rounded-xl shadow-lg border border-gray-100 dark:bg-gray-800 dark:shadow-xl dark:border-gray-700">
+          <h3 className="text-lg font-bold text-sky-600 mb-2 dark:text-sky-400">
+            Русский (Перевод)
+          </h3>
           {right.map((w) => {
             const isMatched = matched.includes(w.de);
             const isIncorrect = incorrectRight === w.de;
 
-            let cls = "bg-white border-b-2 border-sky-100 hover:bg-sky-50";
+            let cls =
+              "bg-sky-50 border-2 border-sky-100 hover:bg-sky-100 text-gray-800 dark:bg-gray-700 dark:border-gray-600 dark:hover:bg-gray-600 dark:text-gray-50";
             if (isMatched) {
+              // Совпавший элемент
               cls =
-                "bg-green-100 text-green-700 border-green-400 pointer-events-none";
+                "bg-green-100 text-green-700 border-green-400 pointer-events-none opacity-60 dark:bg-green-900 dark:text-green-300 dark:border-green-600";
             } else if (isIncorrect) {
-              cls = "bg-red-200 text-red-700 border-red-500 shake-animation"; // Класс для анимации
+              // Неверный элемент
+              cls =
+                "bg-red-200 text-red-700 border-red-500 shake-animation dark:bg-red-800 dark:text-red-300 dark:border-red-600";
             } else if (selectedLeft) {
-              // Если слева что-то выбрано, подсвечиваем русские слова
-              cls = "bg-white border-b-2 border-sky-300 hover:bg-sky-100";
+              // Подсветка доступных вариантов, если что-то выбрано слева
+              cls =
+                "bg-sky-50 border-2 border-sky-300 hover:bg-sky-100 shadow-sm dark:bg-gray-700 dark:border-sky-500 dark:hover:bg-gray-600 dark:text-gray-50";
             }
 
             return (
               <button
-                key={w.de + "right"} // Уникальный ключ
-                disabled={isMatched || !selectedLeft} // Деактивируем, если не выбрано слева
+                key={w.de + "right"}
+                disabled={isMatched || !selectedLeft}
                 onClick={() => handleRightSelect(w)}
-                className={`p-4 rounded-xl shadow-md text-lg font-medium text-left transition duration-150 ${cls}`}
+                className={`p-3 rounded-lg text-lg font-medium text-center transition duration-150 ${cls}`}
               >
                 {w.ru}
               </button>
@@ -221,9 +277,8 @@ export default function MatchingMode() {
         </div>
       </div>
 
-      {/* Добавляем стили для анимации (так как мы не можем использовать чистый CSS, эмулируем "тряску" через классы) */}
+      {/* Стили для анимации */}
       <style>{`
-        /* Эмуляция анимации "тряски" для неверного ответа */
         @keyframes shake {
           0%, 100% { transform: translateX(0); }
           20%, 60% { transform: translateX(-5px); }
