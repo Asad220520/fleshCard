@@ -1,146 +1,273 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { markLearned } from "../../store/store";
-import { motion, AnimatePresence } from "framer-motion";
-import { useSwipeable } from "react-swipeable";
+import { useParams, useNavigate } from "react-router-dom";
+import { selectLesson, markLearned } from "../../store/store";
+import { lessons } from "../../data";
+import StudyCompletionModal from "../../components/StudyCompletionModal";
+
+// Импорт иконок
+import {
+  HiArrowLeft,
+  HiArrowRight,
+  HiCheck,
+  HiOutlineRefresh,
+} from "react-icons/hi";
+import AudioPlayer from "../../components/AudioPlayer";
+
+// Стили для 3D-переворота (Оставлены без изменений)
+const flipCardStyles = {
+  perspective: "1000px",
+  width: "100%",
+  maxWidth: "400px",
+  height: "300px",
+};
+
+const flipCardInnerStyles = {
+  position: "relative",
+  width: "100%",
+  height: "100%",
+  textAlign: "center",
+  transition: "transform 0.6s",
+  transformStyle: "preserve-3d",
+};
+
+const flipCardFaceStyles = {
+  position: "absolute",
+  width: "100%",
+  height: "100%",
+  WebkitBackfaceVisibility: "hidden",
+  backfaceVisibility: "hidden",
+  borderRadius: "1rem",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "2rem",
+};
 
 export default function FlashCardsMode() {
+  const { lessonId } = useParams();
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const { list, learned } = useSelector((state) => state.words);
 
+  // Состояния для логики
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
+  const [sessionList, setSessionList] = useState([]); // <-- Фиксированный список слов для сессии
+  const [isSessionComplete, setIsSessionComplete] = useState(false);
 
-  const remainingList = (list || []).filter(
-    (w) => !learned.some((lw) => lw.de === w.de && lw.lessonId === w.lessonId)
-  );
+  // Фильтрация невыученных слов (должен быть вне useEffect для корректной работы)
+  const remainingList =
+    list?.filter(
+      (w) => !learned.some((lw) => lw.de === w.de && lw.lessonId === w.lessonId)
+    ) || [];
 
+  const current = sessionList[index]; // <-- Текущее слово берем из фиксированного списка
+
+  // 1. Загрузка урока
   useEffect(() => {
-    if (remainingList.length === 0) setIndex(0);
-    else if (index >= remainingList.length) setIndex(remainingList.length - 1);
-  }, [remainingList.length, index]);
+    if ((!list || list.length === 0) && lessons[lessonId]) {
+      dispatch(selectLesson({ words: lessons[lessonId], lessonId }));
+    }
+  }, [list, dispatch, lessonId]);
 
-  const current = remainingList[index] || null;
+  // 2. Инициализация sessionList в начале работы компонента
+  useEffect(() => {
+    // Инициализируем sessionList только один раз, если он пуст
+    if (remainingList.length > 0 && sessionList.length === 0) {
+      setSessionList(remainingList);
+    }
+  }, [remainingList, sessionList.length]);
 
-  const learnedCount = learned.filter(
-    (w) => w.lessonId === current?.lessonId
-  ).length;
+  // 3. Проверка завершения сессии (теперь только по sessionList)
+  useEffect(() => {
+    if (sessionList.length > 0 && index >= sessionList.length) {
+      setIsSessionComplete(true);
+      setIndex(0); // Сброс индекса для модального окна/повтора
+      setFlipped(false);
+    }
+  }, [index, sessionList.length]);
 
-  const handlePrev = () => {
+  // Функции навигации
+  const next = useCallback(() => {
     setFlipped(false);
-    setIndex((i) => (i > 0 ? i - 1 : 0));
+    // Переход к следующему индексу в рамках sessionList, если он не последний
+    if (index < sessionList.length) {
+      setIndex((i) => i + 1);
+    }
+  }, [sessionList.length, index]);
+
+  const prev = useCallback(() => {
+    setFlipped(false);
+    setIndex((i) => (i - 1 >= 0 ? i - 1 : sessionList.length - 1));
+  }, [sessionList.length]);
+
+  // !!! КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Убираем markLearned, просто переходим к следующему слову
+  const handleKnow = () => {
+    if (current) {
+      next();
+    }
   };
 
-  const handleNext = () => {
+  const handleFlip = () => setFlipped((f) => !f);
+
+  // Функции для модального окна
+  const handleRestartSession = () => {
+    // При перезапуске берем актуальный remainingList (слова, которые не выучены)
+    setIsSessionComplete(false);
+    setIndex(0);
     setFlipped(false);
-    setIndex((i) => (i < remainingList.length - 1 ? i + 1 : i));
+    // Обновляем sessionList, чтобы начать только с действительно невыученных
+    setSessionList(remainingList);
   };
 
-  const handleMarkLearned = () => {
-    if (!current) return;
-    dispatch(markLearned({ word: current }));
-    setIndex((i) => (i < remainingList.length - 1 ? i + 1 : i));
-    setFlipped(false);
+  const handleCloseModal = () => {
+    // Переход на страницу урока
+    navigate(`/lesson/${lessonId}`);
   };
 
-  const handlers = useSwipeable({
-    onSwipedLeft: () => handleNext(),
-    onSwipedRight: () => handlePrev(),
-    preventDefaultTouchmoveEvent: true,
-    trackMouse: true,
-  });
+  // Функция для кнопки "Назад"
+  const handleGoBack = () => {
+    navigate(`/lesson/${lessonId}`);
+  };
 
-  if (!current)
+  // 1. Если все слова из remainingList уже выучены
+  if (remainingList.length === 0 && list && list.length > 0)
     return (
-      <div className="p-6 text-gray-500 text-center text-lg">
-        Все слова этого урока выучены 🎉
+      <div className="p-12 text-green-600 text-center text-xl font-semibold bg-white rounded-xl shadow-lg m-6">
+        <span role="img" aria-label="party popper" className="text-3xl">
+          🎉
+        </span>{" "}
+        Отлично! Все слова этого урока выучены.
       </div>
     );
 
+  // 2. Если сессия завершена, показываем модальное окно
+  if (isSessionComplete) {
+    return (
+      <StudyCompletionModal
+        // Передаем *актуальный* sessionList (который мы просмотрели)
+        wordsToLearn={sessionList}
+        onRestart={handleRestartSession}
+        onClose={handleCloseModal}
+        modeName="Флеш-карты"
+      />
+    );
+  }
+
+  // 3. Если нет текущего слова (загрузка или пустой sessionList)
+  if (!current) return null;
+
+  // Основной рендеринг
   return (
-    <div
-      {...handlers}
-      className="p-4 flex flex-col items-center min-h-screen bg-sky-50"
-    >
-      {/* Progress bar */}
-      <div className="w-full max-w-sm h-2 bg-gray-300 rounded-full overflow-hidden mb-4">
-        <div
-          className="h-full bg-green-500 transition-all duration-300"
-          style={{
-            width: `${((learnedCount + 1) / (list?.length || 1)) * 100}%`,
-          }}
-        />
-      </div>
-
-      {/* Card with flip animation */}
-      <div className="w-full max-w-sm h-60 perspective-1000">
-        <AnimatePresence exitBeforeEnter>
-          <motion.div
-            key={current.de}
-            className="relative w-full h-full cursor-pointer"
-            onClick={() => setFlipped(!flipped)}
-            initial={{ rotateY: 180 }}
-            animate={{ rotateY: flipped ? 180 : 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5 }}
-            style={{ transformStyle: "preserve-3d" }}
-          >
-            {/* Front */}
-            <div
-              className={`absolute w-full h-full backface-hidden flex items-center justify-center
-                          bg-white shadow-md rounded-2xl p-6 text-2xl font-bold`}
-            >
-              {current.de}
-            </div>
-
-            {/* Back */}
-            <div
-              className={`absolute w-full h-full backface-hidden flex items-center justify-center
-                          bg-sky-200 shadow-md rounded-2xl p-6 text-2xl font-semibold rotateY-180`}
-            >
-              {current.ru}
-            </div>
-          </motion.div>
-        </AnimatePresence>
-      </div>
-
-      {/* Navigation Buttons */}
-      <div className="flex flex-col gap-3 w-full max-w-sm mt-6">
+    <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)]">
+      {/* Кнопка Назад */}
+      <div className="w-full max-w-sm mb-4 self-center">
         <button
-          onClick={handleNext}
-          className="w-full px-6 py-4 text-lg font-semibold bg-white shadow-md 
-                     rounded-2xl active:scale-[0.97] transition-all duration-150 
-                     hover:bg-sky-100 touch-manipulation"
-          disabled={index === remainingList.length - 1}
+          onClick={handleGoBack}
+          className="flex items-center text-sky-700 hover:text-sky-800 transition font-semibold"
         >
-          Далее ➡
-        </button>
-        <button
-          onClick={handlePrev}
-          className="w-full px-6 py-4 text-lg font-semibold bg-white shadow-md 
-                     rounded-2xl active:scale-[0.97] transition-all duration-150 
-                     hover:bg-sky-100 touch-manipulation"
-          disabled={index === 0}
-        >
-          ⬅ Назад
+          <HiArrowLeft className="w-6 h-6 mr-1" />
+          <span className="hidden sm:inline">
+            К уроку {lessonId.toUpperCase()}
+          </span>
         </button>
       </div>
 
-      {/* Learned button */}
-      <button
-        onClick={handleMarkLearned}
-        className="mt-6 w-full max-w-sm px-6 py-4 text-lg font-semibold 
-                   bg-green-600 text-white rounded-2xl shadow-md 
-                   active:scale-[0.97] transition-all duration-150 
-                   hover:bg-green-500 touch-manipulation"
+      {/* Прогресс */}
+      <div className="w-full max-w-sm mb-6 text-center">
+        <div className="text-sm font-medium text-gray-600 mb-2">
+          Прогресс: {index + 1} из {sessionList.length}
+        </div>
+        {/* Индикатор прогресса */}
+        <div className="w-full bg-gray-200 rounded-full h-2.5">
+          <div
+            className="bg-sky-500 h-2.5 rounded-full transition-all duration-300"
+            style={{ width: `${((index + 1) / sessionList.length) * 100}%` }}
+          ></div>
+        </div>
+      </div>
+
+      {/* 3D Флешкарта */}
+      <div
+        style={flipCardStyles}
+        onClick={handleFlip}
+        className="cursor-pointer mb-8"
       >
-        Отметить как выученное
-      </button>
+        <div
+          style={{
+            ...flipCardInnerStyles,
+            transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
+          }}
+        >
+          {/* Передняя сторона (Немецкий) */}
+          <div
+            style={flipCardFaceStyles}
+            className="bg-sky-500 text-white shadow-xl flex-col"
+          >
+            <span className="text-4xl font-bold mb-4">{current.de}</span>
 
-      {/* Progress info */}
-      <div className="mt-5 text-center text-gray-600">
-        Карта <span className="font-semibold">{index + 1}</span> из{" "}
-        <span className="font-semibold">{remainingList.length}</span>
+            {/* ✅ ИНТЕГРАЦИЯ AUDIO PLAYER */}
+            <AudioPlayer
+              textToSpeak={current.de}
+              lang="de-DE"
+              className="!text-white !bg-sky-600 hover:!bg-sky-700 p-3 rounded-full" // Стили для белой карточки
+              title={`Прослушать ${current.de}`}
+            />
+          </div>
+
+          {/* Задняя сторона (Русский) */}
+          <div
+            style={{ ...flipCardFaceStyles, transform: "rotateY(180deg)" }}
+            className="bg-white text-gray-800 shadow-xl border-2 border-sky-500"
+          >
+            <span className="text-4xl font-bold">{current.ru}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Кнопки действий */}
+      <div className="flex flex-wrap justify-center gap-3 w-full max-w-sm">
+        {/* Кнопка "Перевернуть" */}
+        <button
+          onClick={handleFlip}
+          className="flex items-center justify-center w-full sm:w-auto px-4 py-3 bg-sky-200 text-sky-800 rounded-xl font-semibold hover:bg-sky-300 transition duration-150"
+        >
+          <HiOutlineRefresh className="w-5 h-5 mr-2" />
+          {flipped ? "Скрыть перевод" : "Перевернуть"}
+        </button>
+
+        {/* Кнопки навигации */}
+        <div className="flex justify-between w-full sm:w-auto sm:space-x-3 mt-3 sm:mt-0">
+          <button
+            onClick={prev}
+            disabled={sessionList.length <= 1}
+            className="flex-1 sm:flex-none flex items-center justify-center px-4 py-3 bg-white rounded-xl shadow-md text-gray-600 font-semibold hover:bg-gray-100 transition duration-150 disabled:opacity-50"
+          >
+            <HiArrowLeft className="w-5 h-5" />
+            <span className="ml-2 hidden sm:inline">Назад</span>
+          </button>
+          <button
+            onClick={next}
+            disabled={sessionList.length <= 1}
+            className="flex-1 sm:flex-none flex items-center justify-center px-4 py-3 bg-white rounded-xl shadow-md text-gray-600 font-semibold hover:bg-gray-100 transition duration-150 disabled:opacity-50 ml-3"
+          >
+            <span className="mr-2 hidden sm:inline">
+              {index === sessionList.length - 1 ? "Завершить" : "Далее"}
+            </span>
+            <HiArrowRight className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Кнопка "Выучено" */}
+        <button
+          onClick={handleKnow}
+          className="w-full mt-3 sm:mt-0 px-4 py-3 bg-green-600 text-white rounded-xl font-bold text-lg shadow-lg hover:bg-green-700 transition duration-150"
+        >
+          <div className="flex items-center justify-center">
+            <HiCheck className="w-6 h-6 mr-2" />Я знаю это слово! (Скип)
+          </div>
+        </button>
       </div>
     </div>
   );

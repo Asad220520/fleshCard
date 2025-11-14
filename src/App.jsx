@@ -3,7 +3,7 @@ import { Provider } from "react-redux";
 import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
 import { store } from "./store/store";
 import Header from "./components/Header";
-import Footer from "./components/Footer";
+// import Footer from "./components/Footer"; // Закомментировано
 import LessonsList from "./pages/LessonsList";
 import LearnedWords from "./pages/LearnedWords";
 import LessonWords from "./pages/LessonWords";
@@ -20,9 +20,9 @@ export default function App() {
   return (
     <Provider store={store}>
       <Router>
-        <div className="min-h-screen bg-sky-50 text-gray-800 flex flex-col">
+        <div className="min-h-screen">
           <Header />
-          <main className="flex-1 flex flex-col items-center justify-center">
+          <main className="flex-grow pb-16">
             <Routes>
               <Route path="/" element={<LessonsList />} />
               <Route path="/learned" element={<LearnedWords />} />
@@ -49,7 +49,7 @@ export default function App() {
             </Routes>
           </main>
 
-          <Footer />
+          {/* <Footer /> */}
         </div>
       </Router>
     </Provider>
