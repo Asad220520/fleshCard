@@ -1,42 +1,30 @@
-// src/context/ThemeContext.jsx
 import React, { createContext, useState, useEffect, useContext } from "react";
 
-// 1. Создание контекста
+// 1. Создаем контекст
 const ThemeContext = createContext();
 
-// 2. Компонент провайдера
+// 2. Провайдер для темы
 export const ThemeProvider = ({ children }) => {
-  // Инициализация: Проверяем локальное хранилище или предпочтения системы
+  // Инициализация темы
   const [theme, setTheme] = useState(localStorage.getItem("theme") || "light");
 
-  // 3. Эффект для применения класса 'dark' к HTML
   useEffect(() => {
-    const root = window.document.documentElement;
-    const isDark = theme === "dark";
+    const root = document.documentElement;
 
-    // Сохраняем выбор пользователя
-    localStorage.setItem("theme", theme);
-
-    // --- ✅ ИСПРАВЛЕННАЯ ЛОГИКА ДЛЯ TAILWIND DARK MODE ---
-
-    if (isDark) {
-      // Если тема темная, добавляем класс 'dark'
-      root.classList.add("dark");
+    // Применяем тему и сохраняем в localStorage
+    if (theme === "dark") {
+      root.classList.add("dark"); // Добавляем класс "dark"
     } else {
-      // Если тема светлая, удаляем класс 'dark'
-      root.classList.remove("dark");
+      root.classList.remove("dark"); // Убираем класс "dark"
     }
 
-    // ❌ ВАЖНО: Мы больше не используем классы 'light' на корневом элементе.
-    // Если вы ранее использовали класс 'light' для стилизации (что не рекомендуется),
-    // вам нужно удалить его, чтобы Tailwind работал корректно.
-    root.classList.remove("light");
-    // ---------------------------------------------------
-  }, [theme]);
+    // Сохраняем текущую тему в localStorage
+    localStorage.setItem("theme", theme);
+  }, [theme]); // Каждый раз при изменении темы
 
-  // Функция переключения
+  // Функция переключения темы
   const toggleTheme = () => {
-    setTheme((currentTheme) => (currentTheme === "light" ? "dark" : "light"));
+    setTheme((prevTheme) => (prevTheme === "light" ? "dark" : "light"));
   };
 
   return (
@@ -46,5 +34,5 @@ export const ThemeProvider = ({ children }) => {
   );
 };
 
-// 4. Хук для удобного использования в компонентах
+// 3. Хук для использования темы
 export const useTheme = () => useContext(ThemeContext);

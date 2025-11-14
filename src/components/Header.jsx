@@ -1,13 +1,17 @@
 import React from "react";
 import { Link, useNavigate } from "react-router-dom";
 // Импорт иконок
-import { HiHome, HiArrowLeft, HiBookmark, HiSun, HiMoon } from "react-icons/hi";
-// Импорт хука для темы
+// ✅ Добавлены HiUser и HiCog для Профиля и Настроек
+import { HiHome, HiBookmark, HiUser, HiCog } from "react-icons/hi";
+// HiArrowLeft, HiSun, HiMoon удалены, так как они больше не используются
+
+// Импорт хука для темы (оставлен, но логика theme/toggleTheme не используется в хедере)
 import { useTheme } from "../context/ThemeContext.jsx";
 
 const MobileHeader = ({ label = "Назад", className = "" }) => {
   const navigate = useNavigate();
   // Используем хук темы
+  // Логика темы здесь больше не нужна, но хук можно оставить, если он используется в другом месте.
   const { theme, toggleTheme } = useTheme();
 
   return (
@@ -26,28 +30,12 @@ const MobileHeader = ({ label = "Назад", className = "" }) => {
         aria-label="Главная"
       >
         <HiHome className="w-6 h-6" />
-        {/* ✅ Скрываем текст на всех размерах кроме md (desktop) */}
-        <span className="text-xs mt-1 md:text-base md:mt-0 md:ml-2 hidden md:inline">
+        <span className="text-xs mt-1 md:text-base md:mt-0 md:ml-2 md:inline">
           Главная
         </span>
       </Link>
 
-      {/* 2. Кнопка "Назад" */}
-      <button
-        onClick={() => navigate(-1)}
-        className={`flex flex-col items-center justify-center p-2 rounded-xl text-sky-600 hover:text-sky-700 
-                   md:flex-row md:py-1 md:px-3 md:bg-sky-200 md:rounded-xl 
-                   dark:text-sky-400 dark:hover:text-sky-300 dark:md:bg-sky-700 dark:md:text-white ${className}`}
-        aria-label={label}
-      >
-        <HiArrowLeft className="w-6 h-6" />
-        {/* ✅ Скрываем текст на всех размерах кроме md (desktop) */}
-        <span className="text-xs mt-1 md:text-base md:mt-0 md:ml-2 hidden md:inline">
-          {label}
-        </span>
-      </button>
-
-      {/* 3. Кнопка "Мои слова" */}
+      {/* 2. Кнопка "Мои слова" */}
       <Link
         to="/learned"
         className="flex flex-col items-center justify-center p-2 rounded-xl text-green-600 hover:text-green-500 
@@ -56,31 +44,39 @@ const MobileHeader = ({ label = "Назад", className = "" }) => {
         aria-label="Мои слова"
       >
         <HiBookmark className="w-6 h-6" />
-        {/* ✅ Скрываем текст на всех размерах кроме md (desktop) */}
-        <span className="text-xs mt-1 md:text-base md:mt-0 md:ml-2 hidden md:inline">
+        <span className="text-xs mt-1 md:text-base md:mt-0 md:ml-2 md:inline">
           Мои слова
         </span>
       </Link>
 
-      {/* 4. Кнопка переключения темы (Dark Mode) */}
-      <button
-        onClick={toggleTheme}
+      {/* 3. ✅ НОВАЯ Кнопка "Профиль" (Вместо "Назад") */}
+      <Link
+        to="/profile"
+        className={`flex flex-col items-center justify-center p-2 rounded-xl text-sky-600 hover:text-sky-700 
+                   md:flex-row md:py-1 md:px-3 md:bg-sky-200 md:rounded-xl 
+                   dark:text-sky-400 dark:hover:text-sky-300 dark:md:bg-sky-700 dark:md:text-white ${className}`}
+        aria-label="Профиль"
+      >
+        <HiUser className="w-6 h-6" />
+        <span className="text-xs mt-1 md:text-base md:mt-0 md:ml-2 md:inline">
+          Профиль
+        </span>
+      </Link>
+
+      {/* 4. ✅ НОВАЯ Кнопка "Настройки" (Вместо переключателя темы) */}
+      <Link
+        to="/settings"
         className="flex flex-col items-center justify-center p-2 rounded-xl text-gray-700 hover:text-gray-900 
                    md:flex-row md:p-2 md:bg-gray-200 md:rounded-full md:shadow-inner md:hover:bg-gray-300
-                   dark:text-yellow-400 dark:hover:text-yellow-300 dark:bg-gray-700 dark:md:bg-gray-700"
-        aria-label="Переключить тему"
+                   dark:text-gray-200 dark:hover:text-gray-50 dark:bg-gray-700 dark:md:bg-gray-700"
+        aria-label="Настройки"
       >
-        {/* Иконка меняется в зависимости от текущей темы */}
-        {theme === "light" ? (
-          <HiMoon className="w-6 h-6" />
-        ) : (
-          <HiSun className="w-6 h-6" />
-        )}
-        {/* ✅ Скрываем текст на всех размерах кроме md (desktop) */}
-        <span className="text-xs mt-1 md:text-sm md:mt-0 md:ml-2 hidden md:inline">
-          {theme === "light" ? "Dark" : "Light"}
+        {/* Используем иконку настроек */}
+        <HiCog className="w-6 h-6" />
+        <span className="text-xs mt-1 md:text-sm md:mt-0 md:ml-2 md:inline">
+          Настройки
         </span>
-      </button>
+      </Link>
     </header>
   );
 };

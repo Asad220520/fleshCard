@@ -17,12 +17,12 @@ export default function MatchingMode() {
   const { list, learned } = useSelector((state) => state.words);
 
   const [round, setRound] = useState(0);
-  const [chunk, setChunk] = useState([]);
-  const [left, setLeft] = useState([]);
-  const [right, setRight] = useState([]);
-  const [selectedLeft, setSelectedLeft] = useState(null);
-  const [matched, setMatched] = useState([]);
-  const [incorrectRight, setIncorrectRight] = useState(null);
+  const [chunk, setChunk] = useState([]); // Слова в текущем раунде
+  const [left, setLeft] = useState([]); // Немецкие слова
+  const [right, setRight] = useState([]); // Русские слова
+  const [selectedLeft, setSelectedLeft] = useState(null); // Выбранное слово слева
+  const [matched, setMatched] = useState([]); // Совпавшие слова (по w.de)
+  const [incorrectRight, setIncorrectRight] = useState(null); // Неверный выбор справа
 
   // --- Расчет пула слов ---
 
@@ -51,7 +51,7 @@ export default function MatchingMode() {
     }
   }, [list, dispatch, lessonId]);
 
-  // 2. Загружаем текущий раунд (БЕЗ зависимости remainingList.length)
+  // 2. Загружаем текущий раунд
   useEffect(() => {
     // Условие выхода, если все раунды завершены или нет слов
     if (chunks.length === 0 || round >= chunks.length) return;
@@ -69,7 +69,7 @@ export default function MatchingMode() {
     setMatched([]);
     setSelectedLeft(null);
     setIncorrectRight(null);
-  }, [round, list, learned]); // ✅ Убрана зависимость remainingList.length
+  }, [round, list, learned]); // Зависимости обновят раунд при переходе или новом уроке
 
   // --- Обработчики кликов ---
 
@@ -91,8 +91,7 @@ export default function MatchingMode() {
       setMatched((m) => [...m, word.de]);
       setIncorrectRight(null);
 
-      // markLearned: Помечаем слово как выученное сразу после верного совпадения
-      dispatch(markLearned({ word: selectedLeft }));
+      // ❌ ИЗМЕНЕНИЕ: Удалили markLearned отсюда, чтобы не прерывать раунд
 
       // Снимаем выбор ПОСЛЕ диспатча и совпадения, чтобы избежать "прыжка"
       setSelectedLeft(null);
@@ -106,17 +105,23 @@ export default function MatchingMode() {
 
   const handleGoBack = () => navigate(`/lesson/${lessonId}`);
 
-  // --- Переход к следующему раунду ---
+  // --- Переход к следующему раунду (КЛЮЧЕВОЕ ИЗМЕНЕНИЕ) ---
 
   useEffect(() => {
     // Проверяем, совпали ли все слова в текущем чанке
     if (chunk.length > 0 && matched.length === chunk.length) {
-      // Переход к следующему раунду с задержкой
+      // ✅ ИЗМЕНЕНИЕ: Помечаем слова как выученные только после завершения раунда
+      chunk.forEach((word) => {
+        // Помечаем как выученные ТОЛЬКО слова из текущего чанка
+        dispatch(markLearned({ word: word }));
+      });
+
+      // Переход к следующему раунду с задержкой (800мс)
       setTimeout(() => {
         setRound((r) => r + 1);
       }, 800);
     }
-  }, [matched, chunk, dispatch]);
+  }, [matched, chunk, dispatch]); // Теперь обновление Redux происходит после завершения раунда
 
   // --- UI Рендеринг ---
 

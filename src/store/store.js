@@ -22,16 +22,31 @@ const wordsSlice = createSlice({
         );
       }
     },
-    // payload { de, lessonId } или whole word
+
+    // ✅ ИСПРАВЛЕННЫЙ РЕДЮСЕР removeLearned
+    // payload должен содержать { de, lessonId: string }
+    // Если lessonId не передан, используется state.currentLessonId.
     removeLearned: (state, action) => {
-      const payload = action.payload;
-      const de = payload.de;
-      const lessonId = payload.lessonId;
+      const { de, lessonId: passedLessonId } = action.payload;
+
+      const targetLessonId = passedLessonId || state.currentLessonId;
+
+      if (!de || !targetLessonId) {
+        // Логируем ошибку, чтобы знать, что что-то пошло не так
+        console.warn(
+          "Невозможно удалить слово: отсутствует DE или LessonId.",
+          action.payload
+        );
+        return; // Выходим
+      }
+
       state.learned = state.learned.filter(
-        (w) => !(w.de === de && (lessonId ? w.lessonId === lessonId : true))
+        (w) => !(w.de === de && w.lessonId === targetLessonId)
       );
+
       localStorage.setItem("learnedWords", JSON.stringify(state.learned));
     },
+
     prevCard: (state) => {
       if (state.list.length > 0)
         state.index = state.index > 0 ? state.index - 1 : state.list.length - 1;
@@ -85,8 +100,7 @@ export const {
   nextCard,
   prevCard,
   selectLesson,
-  removeLearned, // <- обязательно здесь
-
+  removeLearned,
   markLearned,
   resetLearned,
   saveIndex,

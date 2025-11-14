@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
 .perspective {
   perspective: 1000px;
 }
@@ -14,5 +16,3 @@
 .rotate-y-180 {
   transform: rotateY(180deg);
 }
-
-
