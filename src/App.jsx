@@ -15,6 +15,7 @@ import FlashCardsMode from "./features/LessonModes/FlashCardsMode";
 import QuizMode from "./features/LessonModes/QuizMode";
 import MatchingMode from "./features/LessonModes/MatchingMode";
 import WritingMode from "./features/LessonModes/WritingMode";
+import ListWords from "./features/LessonModes/ListWords";
 
 export default function App() {
   return (
@@ -43,8 +44,8 @@ export default function App() {
                 element={<MatchingMode />}
               />
               <Route
-                path="/lesson/:lessonId/writing"
-                element={<WritingMode />}
+                path="/lesson/:lessonId/words"
+                element={<ListWords />}
               />
             </Routes>
           </main>
