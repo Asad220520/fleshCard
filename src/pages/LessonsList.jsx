@@ -10,173 +10,191 @@ import {
   HiTrash,
   HiX,
   HiOutlineChevronRight,
+  HiOutlineDownload,
+  HiDotsVertical,
 } from "react-icons/hi";
 
-// --- КОМПОНЕНТ ПОДПИСАННОЙ ПОДСКАЗКИ (Tooltip) ---
+// -----------------------------------------------------------
+// КОМПОНЕНТ КОНТЕКСТНОГО МЕНЮ
+// -----------------------------------------------------------
+const LessonMenu = ({ lessonId, onDelete, onExport, onClose }) => {
+  useEffect(() => {
+    // Закрывает меню при клике вне его
+    const handleClickOutside = (event) => {
+      // Проверяем, был ли клик внутри самого LessonMenu (по id)
+      const menuElement = document.getElementById(`menu-${lessonId}`);
+      if (menuElement && !menuElement.contains(event.target)) {
+        onClose();
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [lessonId, onClose]);
+
+  return (
+    <div
+      id={`menu-${lessonId}`}
+      // 💡 Используем absolute/right-0/top-0 для позиционирования
+      className="absolute top-10 right-0 z-30 w-40 bg-white dark:bg-gray-700 rounded-lg shadow-xl py-1 ring-1 ring-black ring-opacity-5 focus:outline-none"
+      role="menu"
+    >
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onExport();
+          onClose();
+        }}
+        className="flex items-center w-full px-4 py-2 text-sm text-sky-600 dark:text-sky-400 hover:bg-gray-100 dark:hover:bg-gray-600"
+        role="menuitem"
+      >
+        <HiOutlineDownload className="w-5 h-5 mr-2" />
+        Экспорт (JSON)
+      </button>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete();
+          onClose();
+        }}
+        className="flex items-center w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-gray-600"
+        role="menuitem"
+      >
+        <HiTrash className="w-5 h-5 mr-2" />
+        Удалить урок
+      </button>
+    </div>
+  );
+};
+// -----------------------------------------------------------
+
+// --- КОМПОНЕНТ ПОДПИСАННОЙ ПОДСКАЗКИ (Tooltip) - ИСПРАВЛЕННЫЙ 2.0 ---
 const TourTooltip = ({ step, totalSteps, onNext, onSkip, targetRef }) => {
   const tooltipRef = useRef(null);
   const [position, setPosition] = useState({ top: 0, left: 0 });
-  const [arrowClass, setArrowClass] = useState("hidden");
 
+  // Шаги оставлены без изменений (все fixed для стабильности)
   const steps = [
-    // Шаг 0: Общая информация (center)
     {
       title: "Добро пожаловать в WordMaster! 🚀",
       text: "Это ваша персональная система для изучения иностранных слов. Вы можете добавлять свои собственные списки слов, а затем повторять их с помощью флешкарт, сопоставления, викторин и других режимов тренировки. Чтобы начать работу, добавьте свой первый урок.",
       positioning: "center",
+      isFixed: true,
     },
-    // Шаг 1: Кнопка Плюс (top-right, fixed)
     {
       title: "Добавление уроков",
       text: "Нажмите на этот плюс, чтобы создать или загрузить новый список слов для изучения.",
-      positioning: "top-right",
+      positioning: "top-right-fixed",
       isFixed: true,
     },
-    // Шаг 2: Карточка урока (bottom-center)
     {
       title: "Карточка урока",
       text: "Каждый блок — это отдельный урок. Нажмите, чтобы открыть режимы тренировки.",
-      positioning: "bottom-center",
+      positioning: "center-above",
+      isFixed: true,
     },
-    // Шаг 3: Прогресс (bottom-center)
     {
       title: "Отслеживание прогресса",
       text: "Здесь вы видите, сколько слов вы уже выучили в этом уроке (0/2).",
-      positioning: "bottom-center",
+      positioning: "center-above",
+      isFixed: true,
     },
-    // Шаг 4: Удаление (top-right-icon)
     {
-      title: "Удаление урока",
-      text: "Используйте эту иконку, чтобы удалить урок и весь связанный с ним прогресс.",
-      positioning: "top-right-icon",
+      title: "Меню урока",
+      text: "Нажмите на эти три точки, чтобы увидеть опции: 'Удалить урок' или 'Экспорт'.",
+      positioning: "center-above", // Направим тултип на меню
+      isFixed: true,
     },
   ];
 
   const currentStep = steps[step];
-  const isMobile = window.innerWidth < 640;
+  const padding = 15;
+  const HEADER_HEIGHT = 0;
 
-  // 💡 ЭФФЕКТ ДЛЯ РАСЧЕТА ПОЗИЦИИ ПОДСКАЗКИ
   useEffect(() => {
     if (!tooltipRef.current) return;
 
     const tooltip = tooltipRef.current;
-    const padding = 15;
-
     let newPos = { top: 0, left: 0 };
-    let newArrow = "hidden";
 
-    // Шаг 0: Центрирование
+    // 1. Шаг 0: Всегда по центру экрана (Fixed)
     if (currentStep.positioning === "center") {
       newPos = {
         top: window.innerHeight / 2 - tooltip.offsetHeight / 2,
         left: window.innerWidth / 2 - tooltip.offsetWidth / 2,
       };
       setPosition(newPos);
-      setArrowClass("hidden");
       return;
     }
 
     if (!targetRef.current) return;
 
-    const targetRect = targetRef.current.getBoundingClientRect();
+    const targetElement = targetRef.current;
+    let targetRect = targetElement.getBoundingClientRect();
 
-    // 1. Прокрутка к элементу (только если элемент не фиксирован)
-    if (!currentStep.isFixed) {
-      targetRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    // 2. Прокрутка элемента в видимую область, если он вне её
+    if (
+      targetRect.top < HEADER_HEIGHT ||
+      targetRect.bottom > window.innerHeight
+    ) {
+      targetElement.scrollIntoView({ behavior: "smooth", block: "center" });
     }
 
-    if (isMobile) {
-      // --- АДАПТИВНАЯ ЛОГИКА ДЛЯ МОБИЛЬНЫХ ---
-      let topPosition = targetRect.top - tooltip.offsetHeight - padding;
-      newArrow = "bottom-[-8px] left-[50%] -translate-x-1/2 rotate-45";
+    // Обязательно пересчитываем позицию после прокрутки
+    targetRect = targetElement.getBoundingClientRect();
 
-      if (topPosition < 0 || targetRect.top < window.innerHeight / 2) {
-        topPosition = targetRect.bottom + padding;
-        newArrow = "top-[-8px] left-[50%] -translate-x-1/2 -rotate-45";
+    // 3. Расчет позиции тултипа (Fixed)
+    let finalTop = 0;
+    let finalLeft = 0;
+
+    if (currentStep.positioning === "top-right-fixed") {
+      finalTop = targetRect.top - tooltip.offsetHeight - padding;
+      finalLeft = targetRect.right - tooltip.offsetWidth;
+    } else if (currentStep.positioning === "center-above") {
+      let potentialTop = targetRect.top - tooltip.offsetHeight - padding;
+
+      if (potentialTop < HEADER_HEIGHT) {
+        finalTop = targetRect.bottom + padding;
+      } else {
+        finalTop = potentialTop;
       }
 
-      newPos = {
-        top: topPosition,
-        left: window.innerWidth / 2 - tooltip.offsetWidth / 2,
-      };
-
-      // Коррекция, чтобы подсказка не вышла за края
-      newPos.left = Math.max(padding, newPos.left);
-      newPos.left = Math.min(
-        window.innerWidth - tooltip.offsetWidth - padding,
-        newPos.left
-      );
-    } else {
-      // --- ЛОГИКА ДЛЯ ДЕСКТОПА ---
-
-      switch (currentStep.positioning) {
-        case "top-right":
-          // 💡 Исправление позиционирования стрелки для кнопки "+"
-          newPos = {
-            top: targetRect.top - tooltip.offsetHeight - padding,
-            left: targetRect.right - tooltip.offsetWidth,
-          };
-          // Стрелка должна указывать на центр кнопки "+"
-          newArrow = `bottom-[-8px] right-[${
-            targetRect.width / 2 - 6
-          }px] rotate-45`;
-          break;
-        case "top-right-icon":
-          // Кнопка удаления
-          newPos = {
-            top: targetRect.top - tooltip.offsetHeight - padding,
-            left: targetRect.right - tooltip.offsetWidth,
-          };
-          newArrow = "bottom-[-8px] right-5 rotate-45";
-          break;
-        case "bottom-left":
-          newPos = { top: targetRect.bottom + padding, left: targetRect.left };
-          newArrow = "top-[-8px] left-5 -rotate-45";
-          break;
-        case "bottom-center":
-          newPos = {
-            top: targetRect.bottom + padding,
-            left:
-              targetRect.left + targetRect.width / 2 - tooltip.offsetWidth / 2,
-          };
-          newArrow = "top-[-8px] left-[50%] -translate-x-1/2 -rotate-45";
-          break;
-        default:
-          newPos = { top: targetRect.bottom + padding, left: targetRect.left };
-          newArrow = "top-[-8px] left-5 -rotate-45";
-      }
-
-      // Коррекция, чтобы подсказка не вышла за края
-      newPos.left = Math.max(padding, newPos.left);
-      newPos.left = Math.min(
-        window.innerWidth - tooltip.offsetWidth - padding,
-        newPos.left
-      );
-
-      // Учитываем прокрутку ТОЛЬКО для не-фиксированных элементов
-      if (!currentStep.isFixed) {
-        newPos.top += window.scrollY;
-      }
+      finalLeft =
+        targetRect.left + targetRect.width / 2 - tooltip.offsetWidth / 2;
     }
+
+    finalLeft = Math.max(padding, finalLeft);
+    finalLeft = Math.min(
+      window.innerWidth - tooltip.offsetWidth - padding,
+      finalLeft
+    );
+
+    finalTop = Math.max(HEADER_HEIGHT + padding, finalTop);
+
+    newPos = { top: finalTop, left: finalLeft };
 
     setPosition(newPos);
-    setArrowClass(newArrow);
-  }, [step, currentStep.positioning, targetRef, isMobile, currentStep.isFixed]);
+  }, [step, currentStep.positioning, targetRef]);
+
+  const overlayStyle = {
+    pointerEvents: "auto",
+  };
+
+  const tooltipPositionClass = "fixed";
 
   return (
-    // Общий затемняющий фон
-    <div className="fixed inset-0 bg-black/70 z-[100] transition-opacity duration-300 pointer-events-none">
+    // Общий затемняющий фон (fixed)
+    <div
+      className="fixed inset-0 bg-black/70 z-[100] transition-opacity duration-300"
+      style={overlayStyle}
+    >
       {/* Сама подсказка */}
       <div
         ref={tooltipRef}
+        // 💡 Используем style для динамической установки top/left
         style={{ top: position.top, left: position.left }}
-        className="absolute w-full max-w-xs p-5 bg-white rounded-xl shadow-2xl z-[101] pointer-events-auto dark:bg-gray-800 transition-all duration-300"
+        // 💡 Используем fixed, чтобы тултип не двигался при скролле
+        className={`${tooltipPositionClass} w-full max-w-xs p-5 bg-white rounded-xl shadow-2xl z-[101] dark:bg-gray-800 transition-all duration-300`}
       >
-        {/* Стрелка-указатель */}
-        <div
-          className={`absolute w-3 h-3 bg-white dark:bg-gray-800 transform ${arrowClass}`}
-        />
-
         <button
           onClick={onSkip}
           className="absolute top-3 right-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
@@ -218,6 +236,8 @@ const TourTooltip = ({ step, totalSteps, onNext, onSkip, targetRef }) => {
     </div>
   );
 };
+// --- КОНЕЦ КОМПОНЕНТА TOURTOOLTIP ---
+
 // Функции и моки (без изменений)
 const getUniqueLearnedWords = (wordsState) => {
   const allWords = [
@@ -255,18 +275,22 @@ const mockLessons = {
 
 const TOUR_STORAGE_KEY = "hasSeenLessonsTour";
 
+// -----------------------------------------------------------
+// ГЛАВНЫЙ КОМПОНЕНТ LessonsList
+// -----------------------------------------------------------
 export default function LessonsList() {
   const wordsState = useSelector((state) => state.words);
   const [lessonsData, setLessonsData] = useState({});
   const [showTour, setShowTour] = useState(false);
   const [tourStep, setTourStep] = useState(0);
+  const [openMenuId, setOpenMenuId] = useState(null); // Состояние для открытого меню
 
   const targetRefs = {
     initial: useRef(null),
     addButton: useRef(null),
     mokoCard: useRef(null),
     mokoProgress: useRef(null),
-    mokoDelete: useRef(null),
+    mokoMenu: useRef(null),
   };
 
   const tourSteps = [
@@ -274,7 +298,8 @@ export default function LessonsList() {
     { name: "addButton", ref: targetRefs.addButton, isFixed: true },
     { name: "mokoCard", ref: targetRefs.mokoCard, isFixed: false },
     { name: "mokoProgress", ref: targetRefs.mokoProgress, isFixed: false },
-    { name: "mokoDelete", ref: targetRefs.mokoDelete, isFixed: false },
+    // Обновлен шаг для указания на меню
+    { name: "mokoMenu", ref: targetRefs.mokoMenu, isFixed: false },
   ];
 
   useEffect(() => {
@@ -302,6 +327,7 @@ export default function LessonsList() {
   const handleNextStep = useCallback(() => {
     if (tourStep < tourSteps.length - 1) {
       setTourStep((s) => s + 1);
+      setOpenMenuId(null); // Закрываем меню при переходе к следующему шагу
     } else {
       handleTourComplete();
     }
@@ -334,13 +360,44 @@ export default function LessonsList() {
     saveLessons(updatedLessons);
   };
 
+  // -----------------------------------------------------------
+  // НОВАЯ ФУНКЦИЯ: Экспорт урока
+  // -----------------------------------------------------------
+  const exportSingleLesson = (lessonId, cards) => {
+    const exportData = {
+      lessonId: lessonId,
+      cards: cards,
+      meta: {
+        app: "WordMaster Lesson Export",
+        timestamp: new Date().toISOString(),
+      },
+    };
+
+    const jsonString = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonString], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = `${lessonId}_backup.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    // Добавим уведомление для пользователя
+    console.log(`Урок "${lessonId}" экспортирован как .json файл.`);
+    alert(`Урок "${lessonId}" успешно экспортирован! Файл скачан.`);
+  };
+  // -----------------------------------------------------------
+
   const lessonIds = Object.keys(lessonsData);
 
   const currentTargetRef = showTour ? tourSteps[tourStep].ref : null;
   // 💡 Класс для элементов, которые должны быть выделены: relative + высокий z-index
   const highlightClasses = "relative z-[102]";
-  // 💡 Класс для иконки удаления: только высокий z-index
-  const highlightIconClasses = "z-[102]";
+  // 💡 Класс для иконки меню
+  const highlightMenuClasses = "z-[102]";
 
   const isActive = (ref) => showTour && ref === currentTargetRef;
 
@@ -371,6 +428,18 @@ export default function LessonsList() {
         <HiPlus className="w-8 h-8" />
       </Link>
 
+      {/* ----------------------------------------------------------- */}
+      {/* Сообщение-пояснение для пользователя о новых функциях */}
+      {/* ----------------------------------------------------------- */}
+      {!localStorage.getItem(TOUR_STORAGE_KEY) && (
+        <div className="max-w-4xl mx-auto p-4 mb-6 bg-blue-100 dark:bg-gray-700 rounded-lg text-blue-800 dark:text-blue-300 border border-blue-300">
+          👋 **Добро пожаловать!** Обратите внимание: теперь в карточке каждого
+          урока есть **меню (три точки)**, где вы найдете опции **"Удалить
+          урок"** и **"Экспорт (JSON)"** для создания резервной копии слов.
+        </div>
+      )}
+      {/* ----------------------------------------------------------- */}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl mx-auto">
         {lessonIds.map((lessonId, index) => {
           const progress = getProgress(lessonId);
@@ -378,22 +447,41 @@ export default function LessonsList() {
           const isMoko = lessonId === "moko";
 
           return (
+            // 💡 Весь блок должен быть relative для позиционирования меню
             <div key={lessonId} className={`relative`}>
-              {/* Кнопка удаления */}
-              <button
-                ref={isMoko ? targetRefs.mokoDelete : null}
-                onClick={() => handleDeleteLesson(lessonId)}
-                // 💡 Применяем z-index, но без relative, чтобы не сбивать absolute позицию
-                className={`absolute top-3 right-3 p-1 rounded-full bg-white/70 dark:bg-gray-700/70 text-red-500 hover:text-red-700 z-20 transition ${
-                  isMoko && isActive(targetRefs.mokoDelete)
-                    ? highlightIconClasses
+              {/* Кнопка меню (Три точки) */}
+              <div
+                ref={isMoko ? targetRefs.mokoMenu : null}
+                className={`absolute top-2 right-2 z-20 ${
+                  isMoko && isActive(targetRefs.mokoMenu)
+                    ? highlightMenuClasses
                     : ""
                 }`}
-                title="Удалить урок"
-                aria-label={`Удалить урок ${lessonId}`}
               >
-                <HiTrash className="w-5 h-5" />
-              </button>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setOpenMenuId(openMenuId === lessonId ? null : lessonId);
+                  }}
+                  className="p-1 rounded-full bg-white/70 dark:bg-gray-700/70 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition"
+                  title="Опции урока"
+                >
+                  <HiDotsVertical className="w-6 h-6" />
+                </button>
+
+                {/* Контекстное меню */}
+                {openMenuId === lessonId && (
+                  <LessonMenu
+                    lessonId={lessonId}
+                    onDelete={() => handleDeleteLesson(lessonId)}
+                    onExport={() =>
+                      exportSingleLesson(lessonId, lessonsData[lessonId])
+                    }
+                    onClose={() => setOpenMenuId(null)}
+                  />
+                )}
+              </div>
 
               <Link
                 ref={isMoko ? targetRefs.mokoCard : null}

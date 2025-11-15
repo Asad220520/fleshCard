@@ -1,6 +1,5 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
-@import 'shepherd.js/dist/css/shepherd.css';
 .perspective {
   perspective: 1000px;
 }
