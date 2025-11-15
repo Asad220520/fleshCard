@@ -1,8 +1,12 @@
-import { useEffect, useState } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useParams, Link, useNavigate } from "react-router-dom";
-// Импортируем markLearned/removeLearned и selectLesson
-import { markLearned, removeLearned, selectLesson } from "../../store/store";
+// 💡 ИМПОРТИРУЕМ markMasterLearned
+import {
+  markMasterLearned,
+  removeLearned,
+  selectLesson,
+} from "../../store/store";
 import { lessons } from "../../data";
 import AudioPlayer from "../../components/AudioPlayer";
 
@@ -15,8 +19,17 @@ import {
   HiOutlineCheckCircle,
 } from "react-icons/hi";
 
-// 💡 КОНСТАНТА: Выбираем целевой режим для ручного управления
-const TARGET_MODE = 'flashcards'; // Будем использовать learnedFlashcards для чтения/записи
+// ⚠️ УДАЛЕНО: TARGET_MODE больше не нужен, так как ListWords работает со всеми режимами.
+// const TARGET_MODE = "flashcards";
+
+// 💡 КОНСТАНТА: Список всех режимов для удаления (при "не выучено")
+const ALL_MODES = [
+  "flashcards",
+  "matching",
+  "quiz",
+  "writing",
+  "sentence_puzzle", // Включаем новый режим
+];
 
 /**
  * Страница, отображающая ПОЛНЫЙ список слов для текущего урока,
@@ -28,11 +41,39 @@ export default function ListWords() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  // 💡 ИСПОЛЬЗУЕМ learnedFlashcards ВМЕСТО УСТАРЕВШЕГО learned
-  const { list, learnedFlashcards } = useSelector((state) => state.words);
-  
+  // 💡 ИСПОЛЬЗУЕМ ВСЕ МАССИВЫ ДЛЯ КОМПЛЕКСНОЙ ПРОВЕРКИ
+  const {
+    list,
+    learnedFlashcards,
+    learnedMatching,
+    learnedQuiz,
+    learnedWriting,
+    learnedSentencePuzzle,
+  } = useSelector((state) => state.words);
+
   // Слова для отображения: полный список из Redux Store
   const words = list?.filter((w) => w.lessonId === lessonId) || [];
+
+  // 💡 ВЫЧИСЛЯЕМ УНИВЕРСАЛЬНЫЙ НАБОР ВЫУЧЕННЫХ СЛОВ (Set)
+  const learnedSet = useMemo(() => {
+    const allLearnedWords = [
+      ...learnedFlashcards,
+      ...learnedMatching,
+      ...learnedQuiz,
+      ...learnedWriting,
+      ...(learnedSentencePuzzle || []),
+    ];
+    const set = new Set();
+    // Создаем уникальный ключ для всех выученных слов
+    allLearnedWords.forEach((w) => set.add(`${w.de}-${w.lessonId}`));
+    return set;
+  }, [
+    learnedFlashcards,
+    learnedMatching,
+    learnedQuiz,
+    learnedWriting,
+    learnedSentencePuzzle,
+  ]);
 
   // --- Загрузка данных урока при обновлении ---
   useEffect(() => {
@@ -45,23 +86,22 @@ export default function ListWords() {
 
   // --- Обработчики действий ---
 
-  /** Переключает статус слова между "выучено" и "не выучено". */
-  const handleToggleLearned = (word, isLearned) => {
-    // ✅ ИСПРАВЛЕНИЕ: Передаем ПОЛНЫЙ объект слова и ОБЯЗАТЕЛЬНО режим (mode).
+  /** Переключает статус слова между "выучено" (везде) и "не выучено" (везде). */
+  const handleToggleLearned = (word, isLearnedInAnyMode) => {
     const wordData = {
-      ...word, // Копируем все поля (de, ru, exde, exru, lessonId и т.д.)
-      mode: TARGET_MODE, // 💡 ОБЯЗАТЕЛЬНО ДОБАВЛЯЕМ РЕЖИМ
+      ...word,
+      // ⚠️ Поле mode больше не устанавливается здесь,
+      // markMasterLearned его не требует, removeLearned получит его в цикле.
     };
 
-    if (isLearned) {
-      // Отмечаем как невыученное (удаляем из learned).
-      // removeLearned ожидает {de, lessonId, mode}
-      dispatch(removeLearned(wordData));
+    if (isLearnedInAnyMode) {
+      // 💡 Если выучено (хотя бы в одном режиме), удаляем ИЗ ВСЕХ РЕЖИМОВ
+      ALL_MODES.forEach((mode) => {
+        dispatch(removeLearned({ ...wordData, mode }));
+      });
     } else {
-      // Отмечаем как выученное (добавляем в learned).
-      // markLearned ожидает { word: wordData, mode }
-      // В Redux Store markLearned извлекает mode из wordData, но лучше передать явно
-      dispatch(markLearned({ word: wordData, mode: TARGET_MODE }));
+      // 💡 Если не выучено, используем мастер-действие, которое сохранит во ВСЕ режимы
+      dispatch(markMasterLearned({ word: wordData }));
     }
   };
 
@@ -72,7 +112,6 @@ export default function ListWords() {
 
   // --- UI Рендеринг ---
 
-  // 1. Состояние, когда в уроке нет слов (после загрузки)
   if (!lessons[lessonId])
     return (
       <div className="p-6 text-red-500 text-center dark:bg-gray-900 dark:text-red-400 min-h-screen">
@@ -105,7 +144,6 @@ export default function ListWords() {
     <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
       {/* Заголовок и Навигация */}
       <div className="w-full max-w-lg mb-6 flex justify-between items-center">
-        {/* Кнопка "Назад" */}
         <button
           onClick={handleGoBack}
           className="flex items-center text-sky-700 hover:text-sky-800 transition font-semibold dark:text-sky-400 dark:hover:text-sky-300"
@@ -113,7 +151,6 @@ export default function ListWords() {
           <HiArrowLeft className="w-6 h-6 mr-1" />
           <span className="hidden sm:inline">К уроку</span>
         </button>
-        {/* Название урока */}
         <div className="flex items-center text-lg sm:text-2xl font-extrabold text-gray-800 dark:text-gray-50">
           <HiBookOpen className="w-6 h-6 mr-2 text-sky-600 dark:text-sky-400" />
           <span>Слова: {lessonId.toUpperCase()}</span>
@@ -124,24 +161,26 @@ export default function ListWords() {
       {/* Инструкция */}
       <p className="w-full max-w-lg mb-4 text-sm text-gray-600 text-center dark:text-gray-400">
         {words.length} слов в уроке. Нажмите на значок справа, чтобы отметить
-        слово как выученное/невыученное. (Используется прогресс режима{" "}
-        <span className="font-bold">Флеш-карт</span>).
+        слово как выученное/невыученное. Этот список является{" "}
+        <span className="font-bold">Мастер-списком</span>: статус
+        распространяется <span className="font-bold">на все режимы</span>.
       </p>
 
       {/* Список слов */}
       <div className="grid grid-cols-1 gap-4 w-full max-w-lg">
         {words.map((word) => {
-          // Определяем, выучено ли слово
-          const isLearned = learnedFlashcards.some( // 💡 ИСПОЛЬЗУЕМ learnedFlashcards
-            // Проверка должна быть по de и lessonId (как и в Redux)
-            (w) => w.de === word.de && w.lessonId === word.lessonId
-          );
+          // 💡 ИСПОЛЬЗУЕМ: Проверяем, выучено ли слово в ЛЮБОМ режиме (Мастер-статус)
+          const wordKey = `${word.de}-${word.lessonId}`;
+          const isLearnedInAnyMode = learnedSet.has(wordKey);
+
+          // ⚠️ isLearnedInTargetMode теперь не используется, заменяем на isLearnedInAnyMode
+          // const isLearnedInTargetMode = learnedFlashcards.some( ... );
 
           return (
             <div
-              key={`${word.de}-${word.lessonId}`}
+              key={wordKey}
               className={`p-4 rounded-xl shadow-md flex justify-between items-start transition duration-150 border-2 ${
-                isLearned
+                isLearnedInAnyMode // Используем общий статус для стиля
                   ? "bg-green-50 border-green-500 hover:shadow-lg dark:bg-green-900 dark:border-green-600 dark:shadow-xl"
                   : "bg-white border-gray-200 hover:border-sky-300 dark:bg-gray-800 dark:border-gray-700 dark:hover:border-sky-500 dark:shadow-xl"
               }`}
@@ -151,10 +190,10 @@ export default function ListWords() {
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center space-x-3">
                     {/* Статус слова */}
-                    {isLearned ? (
+                    {isLearnedInAnyMode ? ( // Используем общий статус
                       <HiCheckCircle
                         className="w-6 h-6 text-green-500 flex-shrink-0 dark:text-green-400"
-                        title="Выучено"
+                        title="Выучено (в одном из режимов)"
                       />
                     ) : (
                       <HiEyeOff
@@ -174,10 +213,6 @@ export default function ListWords() {
                       </div>
                     </div>
                   </div>
-                  {/* Перевод */}
-                  <span className="font-semibold text-lg text-sky-700 dark:text-sky-400">
-                    {word.ru}
-                  </span>
                 </div>
 
                 {/* 2. БЛОК: Предложения (exde / exru) */}
@@ -201,21 +236,23 @@ export default function ListWords() {
               {/* Кнопка "Отметить статус" (Вынесена вправо) */}
               <button
                 onClick={(e) => {
-                  e.stopPropagation(); // Предотвращаем всплытие
-                  handleToggleLearned(word, isLearned);
+                  e.stopPropagation();
+                  // Используем isLearnedInAnyMode для решения о добавлении (марк мастер) / удалении (удаление из всех)
+                  handleToggleLearned(word, isLearnedInAnyMode);
                 }}
                 className={`p-3 rounded-full transition flex-shrink-0 self-center ml-2 ${
-                  isLearned
+                  isLearnedInAnyMode // Используем мастер-статус для стиля кнопки
                     ? "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-700 dark:text-green-200 dark:hover:bg-green-600"
                     : "bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-700 dark:text-sky-200 dark:hover:bg-sky-600"
                 }`}
                 title={
-                  isLearned
-                    ? "Отметить как невыученное"
-                    : "Отметить как выученное"
+                  isLearnedInAnyMode
+                    ? "Удалить из прогресса (из всех режимов)"
+                    : "Добавить в прогресс (во все режимы)"
                 }
               >
-                {isLearned ? (
+                {/* Меняем иконку: если в мастер-статусе выучено, предлагаем "не выучить" (HiEyeOff), и наоборот */}
+                {isLearnedInAnyMode ? (
                   <HiEyeOff className="w-6 h-6" />
                 ) : (
                   <HiOutlineCheckCircle className="w-6 h-6" />

@@ -1,55 +1,76 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useParams, useNavigate } from "react-router-dom";
-// 💡 Убедитесь, что markLearned импортирован
-import { selectLesson, markLearned } from "../../store/store";
+import {
+  selectLesson,
+  markLearned,
+  clearLessonProgress,
+} from "../../store/store";
 import { lessons } from "../../data";
 
-// Иконки для обратной связи
 import { HiCheckCircle, HiChevronRight, HiArrowLeft } from "react-icons/hi";
 import LessonComplete from "../../components/LessonComplete";
 
-// КОНСТАНТА: Максимальное количество слов в одном раунде
 const CHUNK_SIZE = 5;
 
 export default function MatchingMode() {
   const { lessonId } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  // 💡 ИСПОЛЬЗУЕМ learnedMatching
-  const { list, learnedMatching } = useSelector((state) => state.words);
+
+  const {
+    list,
+    learnedMatching, // <-- Используем только этот массив для фильтрации в этом режиме
+    // Остальные массивы импортируем, но не используем в фильтрации, если нужен независимый прогресс
+    learnedFlashcards,
+    learnedQuiz,
+    learnedWriting,
+    learnedSentencePuzzle,
+  } = useSelector((state) => state.words);
 
   const [round, setRound] = useState(0);
-  const [chunk, setChunk] = useState([]); // Слова в текущем раунде
-  const [left, setLeft] = useState([]); // Немецкие слова
-  const [right, setRight] = useState([]); // Русские слова
-  const [selectedLeft, setSelectedLeft] = useState(null); // Выбранное слово слева
-  const [matched, setMatched] = useState([]); // Совпавшие слова (по w.de)
-  const [incorrectRight, setIncorrectRight] = useState(null); // Неверный выбор справа
+  const [chunk, setChunk] = useState([]);
+  const [left, setLeft] = useState([]);
+  const [right, setRight] = useState([]);
+  const [selectedLeft, setSelectedLeft] = useState(null);
+  const [matched, setMatched] = useState([]);
+  const [incorrectRight, setIncorrectRight] = useState(null);
 
-  // --- Расчет пула слов ---
+  // --- Расчет пула слов (ИЗОЛИРОВАННАЯ фильтрация) ---
 
-  // Список оставшихся слов (невыученных)
-  const remainingList =
-    list?.filter(
-      // 💡 ФИЛЬТРУЕМ ПО learnedMatching
-      (w) =>
-        !learnedMatching.some(
-          (lw) => lw.de === w.de && lw.lessonId === w.lessonId
-        )
-    ) || [];
+  const getRemainingList = useCallback(() => {
+    // 🛑 ИСПРАВЛЕНИЕ: Используем ТОЛЬКО learnedMatching для фильтрации
 
-  // Разделяем на чанки
-  const chunks = [];
-  for (let i = 0; i < remainingList.length; i += CHUNK_SIZE) {
-    chunks.push(remainingList.slice(i, i + CHUNK_SIZE));
-  }
+    const learnedSet = new Set();
+    learnedMatching.forEach((w) => learnedSet.add(`${w.de}-${w.lessonId}`)); // <-- Только learnedMatching
 
-  // Выученные слова в этом уроке (для общего прогресса)
+    return (
+      list?.filter((word) => {
+        const key = `${word.de}-${word.lessonId}`;
+        // Слово исключается, только если оно выучено В РЕЖИМЕ СОПОСТАВЛЕНИЕ
+        return word.lessonId === lessonId && !learnedSet.has(key);
+      }) || []
+    );
+  }, [
+    list,
+    learnedMatching, // <-- В зависимости оставляем только learnedMatching
+    lessonId,
+  ]);
+
+  const remainingList = useMemo(() => getRemainingList(), [getRemainingList]);
+
+  const chunks = useMemo(() => {
+    const lessonChunks = [];
+    for (let i = 0; i < remainingList.length; i += CHUNK_SIZE) {
+      lessonChunks.push(remainingList.slice(i, i + CHUNK_SIZE));
+    }
+    return lessonChunks;
+  }, [remainingList]);
+
   const totalWordsInLesson = list.filter((w) => w.lessonId === lessonId).length;
   const totalCompleted = totalWordsInLesson - remainingList.length;
 
-  // --- Эффекты загрузки и подготовки данных ---
+  // --- Эффекты загрузки и подготовки данных (Остальной код не меняется) ---
 
   // 1. Загружаем урок, если списка нет
   useEffect(() => {
@@ -58,15 +79,23 @@ export default function MatchingMode() {
     }
   }, [list, dispatch, lessonId]);
 
-  // 2. Загружаем текущий раунд
+  // 2. Контроль за актуальностью текущего раунда.
   useEffect(() => {
-    // Условие выхода, если все раунды завершены или нет слов
-    if (chunks.length === 0 || round >= chunks.length) return;
+    if (round >= chunks.length && chunks.length > 0) {
+      setRound(chunks.length - 1);
+    } else if (round >= chunks.length && remainingList.length > 0) {
+      setRound(0);
+    }
+  }, [round, chunks.length, remainingList.length]);
+
+  // 3. Загружаем/Перезагружаем текущий раунд
+  useEffect(() => {
+    if (remainingList.length === 0) return;
+    if (round >= chunks.length && chunks.length > 0) return;
 
     const current = chunks[round] || [];
     setChunk(current);
 
-    // Создаем копии для перемешивания
     const shuffledLeft = [...current].sort(() => Math.random() - 0.5);
     const shuffledRight = [...current].sort(() => Math.random() - 0.5);
 
@@ -76,9 +105,9 @@ export default function MatchingMode() {
     setMatched([]);
     setSelectedLeft(null);
     setIncorrectRight(null);
-  }, [round, list, learnedMatching]); // 💡 Зависимость от learnedMatching (т.к. chunks от него зависят)
+  }, [round, chunks, remainingList.length]);
 
-  // --- Обработчики кликов ---
+  // --- Обработчики кликов и навигации ---
 
   const handleLeftSelect = (word) => {
     if (selectedLeft?.de === word.de) {
@@ -90,7 +119,7 @@ export default function MatchingMode() {
   };
 
   const handleRightSelect = (word) => {
-    if (!selectedLeft) return; 
+    if (!selectedLeft) return;
 
     if (word.de === selectedLeft.de) {
       // Верное совпадение
@@ -106,32 +135,47 @@ export default function MatchingMode() {
 
   const handleGoBack = () => navigate(`/lesson/${lessonId}`);
 
-  // --- Переход к следующему раунду (КЛЮЧЕВОЕ ИЗМЕНЕНИЕ) ---
+  const handleRepeatLesson = useCallback(() => {
+    if (
+      window.confirm(
+        "Вы уверены? Это действие удалит прогресс для этого урока ТОЛЬКО в режиме СОПОСТАВЛЕНИЕ."
+      )
+    ) {
+      // Используем mode: "matching"
+      dispatch(clearLessonProgress({ lessonId, mode: "matching" }));
+      handleGoBack();
+    }
+  }, [dispatch, lessonId, navigate, handleGoBack]);
+
+  // --- Переход к следующему раунду ---
 
   useEffect(() => {
     // Проверяем, совпали ли все слова в текущем чанке
     if (chunk.length > 0 && matched.length === chunk.length) {
-      
-      // 💡 ДИСПАТЧ С mode: 'matching' ПОСЛЕ ЗАВЕРШЕНИЯ РАУНДА
+      // ДИСПАТЧ: Отмечаем слова как выученные ТОЛЬКО в режиме matching
       chunk.forEach((word) => {
         dispatch(markLearned({ word: word, mode: "matching" }));
       });
 
-      // Переход к следующему раунду с задержкой (800мс)
+      // Переход к следующему раунду
       setTimeout(() => {
         setRound((r) => r + 1);
-      }, 800);
+      }, 0);
     }
   }, [matched, chunk, dispatch]);
 
-  // --- UI Рендеринг ---
+  // --- UI Рендеринг (Код не меняется) ---
 
-  // Сообщение о завершении урока
   if (totalCompleted === totalWordsInLesson && totalWordsInLesson > 0) {
-    return <LessonComplete lessonId={lessonId} onGoBack={handleGoBack} />;
+    return (
+      <LessonComplete
+        lessonId={lessonId}
+        onGoBack={handleGoBack}
+        onRepeat={handleRepeatLesson}
+      />
+    );
   }
 
-  // Сообщение о загрузке или пустом списке
   if (totalWordsInLesson === 0) {
     return (
       <div className="p-6 text-gray-500 text-center dark:bg-gray-900 dark:text-gray-400 min-h-screen">
@@ -140,10 +184,8 @@ export default function MatchingMode() {
     );
   }
 
-  // Если раунды есть, но текущий раунд не загружен (происходит между раундами)
   if (!chunk.length && chunks.length > 0) return null;
 
-  // Основной интерфейс
   return (
     <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
       {/* Заголовок и Навигация */}
@@ -158,7 +200,7 @@ export default function MatchingMode() {
         <h1 className="text-2xl font-extrabold text-gray-800 dark:text-gray-50">
           Сопоставление: {lessonId.toUpperCase()}
         </h1>
-        <div className="w-12"></div> {/* Для выравнивания */}
+        <div className="w-12"></div>
       </div>
 
       {/* Прогресс */}
@@ -171,7 +213,9 @@ export default function MatchingMode() {
         <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
           <div
             className="bg-purple-500 h-2 rounded-full transition-all duration-300"
-            style={{ width: `${(matched.length / (chunk.length || 1)) * 100}%` }}
+            style={{
+              width: `${(matched.length / (chunk.length || 1)) * 100}%`,
+            }}
             title={`Совпало ${matched.length} из ${chunk.length} в раунде`}
           ></div>
         </div>
@@ -199,11 +243,9 @@ export default function MatchingMode() {
             let cls =
               "bg-purple-50 border-2 border-purple-100 hover:bg-purple-100 text-gray-800 dark:bg-gray-700 dark:border-gray-600 dark:hover:bg-gray-600 dark:text-gray-50";
             if (isMatched) {
-              // Совпавший элемент
               cls =
                 "bg-green-100 text-green-700 border-green-400 pointer-events-none opacity-60 dark:bg-green-900 dark:text-green-300 dark:border-green-600";
             } else if (isSelected) {
-              // Выбранный элемент
               cls =
                 "bg-purple-500 text-white border-purple-700 shadow-xl scale-[1.02]";
             }
@@ -238,15 +280,12 @@ export default function MatchingMode() {
             let cls =
               "bg-sky-50 border-2 border-sky-100 hover:bg-sky-100 text-gray-800 dark:bg-gray-700 dark:border-gray-600 dark:hover:bg-gray-600 dark:text-gray-50";
             if (isMatched) {
-              // Совпавший элемент
               cls =
                 "bg-green-100 text-green-700 border-green-400 pointer-events-none opacity-60 dark:bg-green-900 dark:text-green-300 dark:border-green-600";
             } else if (isIncorrect) {
-              // Неверный элемент
               cls =
                 "bg-red-200 text-red-700 border-red-500 shake-animation dark:bg-red-800 dark:text-red-300 dark:border-red-600";
             } else if (selectedLeft) {
-              // Подсветка доступных вариантов, если что-то выбрано слева
               cls =
                 "bg-sky-50 border-2 border-sky-300 hover:bg-sky-100 shadow-sm dark:bg-gray-700 dark:border-sky-500 dark:hover:bg-gray-600 dark:text-gray-50";
             }

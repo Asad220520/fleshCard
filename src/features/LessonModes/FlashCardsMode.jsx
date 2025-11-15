@@ -1,12 +1,14 @@
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useParams, useNavigate } from "react-router-dom";
-// 💡 Убедитесь, что markLearned импортирован
-import { selectLesson, markLearned } from "../../store/store";
+import {
+  selectLesson,
+  markLearned,
+  clearLessonProgress,
+} from "../../store/store";
 import { lessons } from "../../data";
 import StudyCompletionModal from "../../components/StudyCompletionModal";
 
-// Импорт иконок
 import {
   HiArrowLeft,
   HiArrowRight,
@@ -16,10 +18,8 @@ import {
 import AudioPlayer from "../../components/AudioPlayer";
 import LessonComplete from "../../components/LessonComplete";
 
-// КОНСТАНТА
 const MAX_SESSION_SIZE = 15;
 
-// Стили для 3D-переворота
 const flipCardStyles = {
   perspective: "1000px",
   width: "100%",
@@ -53,31 +53,60 @@ export default function FlashCardsMode() {
   const { lessonId } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  
-  // 💡 ИСПОЛЬЗУЕМ learnedFlashcards
-  const { list, learnedFlashcards } = useSelector((state) => state.words);
 
-  // Состояния для логики
+  // Получаем ВСЕ массивы прогресса
+  const {
+    list,
+    learnedFlashcards,
+    learnedMatching,
+    learnedQuiz,
+    learnedWriting,
+    learnedSentencePuzzle,
+  } = useSelector((state) => state.words);
+
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [sessionList, setSessionList] = useState([]);
-  const [isSessionComplete, setIsSessionComplete] = useState(false);
-  const [restartCount, setRestartCount] = useState(0);
+  const [isSessionComplete, setIsSessionComplete] = useState(false); // Флаг для модального окна
+  const [restartCount, setRestartCount] = useState(0); // Используется для принудительного перезапуска батча
 
-  // 1. Геттер для получения актуального списка
+  // --- Расчет пула слов (Объединенная фильтрация) ---
+
   const getRemainingList = useCallback(() => {
-    return (
-      list?.filter(
-        // 💡 ФИЛЬТРУЕМ ПО learnedFlashcards
-        (w) =>
-          !learnedFlashcards.some(
-            (lw) => lw.de === w.de && lw.lessonId === w.lessonId
-          )
-      ) || []
-    );
-  }, [list, learnedFlashcards]); // Зависит от Redux-данных
+    // 1. Объединяем все выученные слова из всех режимов
+    const allLearnedWords = [
+      ...learnedFlashcards,
+      ...learnedMatching,
+      ...learnedQuiz,
+      ...learnedWriting,
+      ...(learnedSentencePuzzle || []),
+    ];
 
-  const finalRemainingList = getRemainingList();
+    // 2. Создаем Set уникальных выученных ключей для быстрого поиска
+    const learnedSet = new Set();
+    allLearnedWords.forEach((w) => learnedSet.add(`${w.de}-${w.lessonId}`));
+
+    // 3. Фильтруем list: оставляем только те слова, которых НЕТ в learnedSet
+    return (
+      list?.filter((word) => {
+        const key = `${word.de}-${word.lessonId}`;
+        return word.lessonId === lessonId && !learnedSet.has(key);
+      }) || []
+    );
+  }, [
+    list,
+    learnedFlashcards,
+    learnedMatching,
+    learnedQuiz,
+    learnedWriting,
+    learnedSentencePuzzle,
+    lessonId,
+  ]);
+
+  const finalRemainingList = useMemo(
+    () => getRemainingList(),
+    [getRemainingList]
+  );
   const totalRemaining = finalRemainingList.length;
 
   const current = sessionList[index];
@@ -89,34 +118,82 @@ export default function FlashCardsMode() {
     }
   }, [list, dispatch, lessonId]);
 
-  // 2. handleRestartSession
-  const handleRestartSession = useCallback(() => {
-    setIsSessionComplete(false);
-    setIndex(0);
-    setFlipped(false);
-    setRestartCount((prev) => prev + 1);
-    setSessionList([]);
-  }, []);
-
-  // 3. Инициализация sessionList
-  useEffect(() => {
-    const actualRemainingList = getRemainingList();
+  // 2. Функция для загрузки или перезапуска батча
+  const loadNewBatch = useCallback(() => {
+    const actualRemainingList = finalRemainingList;
     if (actualRemainingList.length > 0) {
       const initialBatch = actualRemainingList.slice(0, MAX_SESSION_SIZE);
       setSessionList(initialBatch);
-    }
-  }, [getRemainingList, restartCount]); 
-
-  // 4. Проверка завершения сессии
-  useEffect(() => {
-    if (sessionList.length > 0 && index >= sessionList.length) {
-      setIsSessionComplete(true);
       setIndex(0);
       setFlipped(false);
+      setIsSessionComplete(false); // Убедиться, что модальное окно скрыто
+    } else if (list && list.length > 0) {
+      // Если список пуст, но слова в уроке есть (значит, все выучены)
+      setIsSessionComplete(true); // Переходим к LessonComplete (см. ЭКРАН 1)
+      setSessionList([]);
+    }
+  }, [finalRemainingList, list]);
+
+  // 3. Инициализация/Перезапуск батча при изменении пула слов или принудительном сбросе
+  useEffect(() => {
+    // 💡 ИСПРАВЛЕНО: Условие для загрузки нового батча, если пул изменился
+    if (finalRemainingList.length > 0) {
+      // Сравниваем ключи текущего батча с тем, что должно быть в новом батче
+      const currentBatchKeys = sessionList
+        .map((w) => `${w.de}-${w.lessonId}`)
+        .join(",");
+      const newBatchKeys = finalRemainingList
+        .slice(0, MAX_SESSION_SIZE)
+        .map((w) => `${w.de}-${w.lessonId}`)
+        .join(",");
+
+      if (
+        currentBatchKeys !== newBatchKeys ||
+        sessionList.length === 0 ||
+        restartCount > 0
+      ) {
+        loadNewBatch();
+      }
+    }
+    // Сбрасываем restartCount после использования
+    setRestartCount(0);
+  }, [
+    finalRemainingList,
+    list,
+    loadNewBatch,
+    restartCount,
+    sessionList.length,
+  ]);
+
+  // 4. Проверка завершения батча
+  useEffect(() => {
+    if (sessionList.length > 0 && index >= sessionList.length) {
+      setIndex(sessionList.length - 1); // Остаемся на последней карточке
+      setFlipped(false);
+
+      // 💡 ИСПРАВЛЕНО: Если мы дошли до конца sessionList, показываем модальное окно
+      setIsSessionComplete(true);
     }
   }, [index, sessionList.length]);
 
-  // Функции навигации
+  const handleRestartSession = useCallback(() => {
+    // 💡 ИСПРАВЛЕНО: Вместо сброса состояний, просто вызываем загрузку нового батча
+    loadNewBatch();
+    setRestartCount((prev) => prev + 1); // Принудительный сброс для активации useEffect
+  }, [loadNewBatch]);
+
+  // Функция "Повторить Урок" очищает прогресс ТОЛЬКО ИЗ ТЕКУЩЕГО режима ('flashcards').
+  const handleRepeatLesson = useCallback(() => {
+    if (
+      window.confirm(
+        "Вы уверены? Это действие удалит прогресс для этого урока ТОЛЬКО в режиме ФЛЕШ-КАРТЫ."
+      )
+    ) {
+      dispatch(clearLessonProgress({ lessonId, mode: "flashcards" }));
+      navigate(`/lesson/${lessonId}`);
+    }
+  }, [dispatch, lessonId, navigate]);
+
   const next = useCallback(() => {
     setFlipped(false);
     if (index < sessionList.length) {
@@ -126,13 +203,12 @@ export default function FlashCardsMode() {
 
   const prev = useCallback(() => {
     setFlipped(false);
-    setIndex((i) => (i - 1 >= 0 ? i - 1 : sessionList.length - 1));
-  }, [sessionList.length]);
+    setIndex((i) => (i - 1 >= 0 ? i - 1 : 0));
+  }, []);
 
-  // КНОПКА "Я знаю это слово"
   const handleKnow = () => {
     if (current) {
-      // 💡 ДИСПАТЧ С mode: 'flashcards'
+      // Отмечаем как выученное ТОЛЬКО в режиме 'flashcards'
       dispatch(markLearned({ word: current, mode: "flashcards" }));
       next();
     }
@@ -140,52 +216,58 @@ export default function FlashCardsMode() {
 
   const handleFlip = () => setFlipped((f) => !f);
 
-  // handleMarkAllAsLearned
   const handleMarkAllAsLearned = useCallback(() => {
     sessionList.forEach((word) => {
-      // 💡 ДИСПАТЧ С mode: 'flashcards'
+      // Отмечаем весь батч как выученный ТОЛЬКО в режиме 'flashcards'
       dispatch(markLearned({ word, mode: "flashcards" }));
     });
-    handleRestartSession();
+    handleRestartSession(); // Запускаем следующий батч
   }, [sessionList, dispatch, handleRestartSession]);
 
   const handleCloseModal = () => {
-    setIsSessionComplete(false);
-    navigate(`/lesson/${lessonId}/flashcards`);
+    // При закрытии модального окна вызываем перезапуск для загрузки следующего батча
+    handleRestartSession();
   };
 
   const handleGoBack = () => {
     navigate(`/lesson/${lessonId}`);
   };
 
-  // 1. Финальное сообщение
-  if (
-    finalRemainingList.length === 0 &&
-    list &&
-    list.length > 0 &&
-    !isSessionComplete
-  )
-    return <LessonComplete lessonId={lessonId} onGoBack={handleGoBack} />;
+  // ЭКРАН 1: Урок полностью завершен (все слова выучены во всех режимах)
+  if (finalRemainingList.length === 0 && list && list.length > 0)
+    return (
+      <LessonComplete
+        lessonId={lessonId}
+        onGoBack={handleGoBack}
+        onRepeat={handleRepeatLesson}
+      />
+    );
 
-  // 2. Если сессия завершена, показываем модальное окно
+  // ЭКРАН 2: Завершение батча / Модальное окно
+  // Показываем, если index достиг конца sessionList
   if (isSessionComplete) {
     return (
       <StudyCompletionModal
-        wordsToLearn={sessionList}
-        onRestart={handleRestartSession}
+        wordsToLearn={sessionList} // Слова в завершенном батче
+        onRestart={handleRestartSession} // Запустить следующий батч
         onClose={handleCloseModal}
         onMarkAll={handleMarkAllAsLearned}
         modeName={`Флеш-карты (Батч ${MAX_SESSION_SIZE})`}
+        // Указываем, что батч завершен, но слова еще есть в пуле
+        isBatchComplete={
+          finalRemainingList.length > MAX_SESSION_SIZE ||
+          (finalRemainingList.length > 0 &&
+            finalRemainingList.length <= MAX_SESSION_SIZE)
+        }
       />
     );
   }
 
-  // 3. Основной рендеринг
-  if (!current) return null; // Если current пуст после сброса
+  // ЭКРАН 3: Основная тренировка
+  if (!current) return null; // Ожидание загрузки
 
   return (
     <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
-      {/* Кнопка Назад */}
       <div className="w-full max-w-sm mb-4 self-center">
         <button
           onClick={handleGoBack}
@@ -198,7 +280,6 @@ export default function FlashCardsMode() {
         </button>
       </div>
 
-      {/* Прогресс */}
       <div className="w-full max-w-sm mb-6 text-center">
         <div className="text-sm font-medium text-gray-600 mb-2 dark:text-gray-400">
           Прогресс **батча**: {index + 1} из {sessionList.length}
@@ -206,7 +287,6 @@ export default function FlashCardsMode() {
             Осталось всего невыученных: {totalRemaining}
           </span>
         </div>
-        {/* Индикатор прогресса */}
         <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
           <div
             className="bg-sky-500 h-2.5 rounded-full transition-all duration-300"
@@ -215,7 +295,6 @@ export default function FlashCardsMode() {
         </div>
       </div>
 
-      {/* 3D Флешкарта */}
       <div
         style={flipCardStyles}
         onClick={handleFlip}
@@ -227,7 +306,6 @@ export default function FlashCardsMode() {
             transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
           }}
         >
-          {/* Передняя сторона (Немецкий) */}
           <div
             style={flipCardFaceStyles}
             className="bg-sky-500 text-white shadow-xl flex-col"
@@ -242,7 +320,6 @@ export default function FlashCardsMode() {
             />
           </div>
 
-          {/* Задняя сторона (Русский) */}
           <div
             style={{ ...flipCardFaceStyles, transform: "rotateY(180deg)" }}
             className="bg-white text-gray-800 shadow-xl border-2 border-sky-500 dark:bg-gray-700 dark:text-gray-50 dark:border-sky-600"
@@ -252,9 +329,7 @@ export default function FlashCardsMode() {
         </div>
       </div>
 
-      {/* Кнопки действий */}
       <div className="flex flex-wrap justify-center gap-3 w-full max-w-sm">
-        {/* Кнопка "Перевернуть" */}
         <button
           onClick={handleFlip}
           className="flex items-center justify-center w-full sm:w-auto px-4 py-3 bg-sky-200 text-sky-800 rounded-xl font-semibold hover:bg-sky-300 transition duration-150 dark:bg-sky-800 dark:text-sky-300 dark:hover:bg-sky-700"
@@ -263,11 +338,10 @@ export default function FlashCardsMode() {
           {flipped ? "Скрыть перевод" : "Перевернуть"}
         </button>
 
-        {/* Кнопки навигации */}
         <div className="flex justify-between w-full sm:w-auto sm:space-x-3 mt-3 sm:mt-0">
           <button
             onClick={prev}
-            disabled={sessionList.length <= 1}
+            disabled={index === 0}
             className="flex-1 sm:flex-none flex items-center justify-center px-4 py-3 bg-white rounded-xl shadow-md text-gray-600 font-semibold hover:bg-gray-100 transition duration-150 disabled:opacity-50 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 dark:shadow-none"
           >
             <HiArrowLeft className="w-5 h-5" />
@@ -275,17 +349,15 @@ export default function FlashCardsMode() {
           </button>
           <button
             onClick={next}
-            disabled={sessionList.length <= 1}
-            className="flex-1 sm:flex-none flex items-center justify-center px-4 py-3 bg-white rounded-xl shadow-md text-gray-600 font-semibold hover:bg-gray-100 transition duration-150 disabled:opacity-50 ml-3 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 dark:shadow-none"
+            className="flex-1 sm:flex-none flex items-center justify-center px-4 py-3 bg-white rounded-xl shadow-md text-gray-600 font-semibold hover:bg-gray-100 transition duration-150 ml-3 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 dark:shadow-none"
           >
             <span className="mr-2 hidden sm:inline">
-              {index === sessionList.length - 1 ? "Завершить" : "Далее"}
+              {index === sessionList.length - 1 ? "Завершить батч" : "Далее"}
             </span>
             <HiArrowRight className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Кнопка "Выучено" */}
         <button
           onClick={handleKnow}
           className="w-full mt-3 sm:mt-0 px-4 py-3 bg-green-600 text-white rounded-xl font-bold text-lg shadow-lg hover:bg-green-700 transition duration-150 dark:bg-green-700 dark:hover:bg-green-800"

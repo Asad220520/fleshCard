@@ -8,57 +8,62 @@ import { HiCheckCircle, HiArrowPath, HiXCircle } from "react-icons/hi2";
  * @param {Array} [props.wordsToLearn] - Список слов, просмотренных в сессии (для режима слов). По умолчанию [].
  * @param {function} props.onRestart - Функция для перезапуска текущего режима (сброс индекса/состояния).
  * @param {function} props.onClose - Функция для закрытия модального окна и перехода.
- * @param {function} [props.onMarkAll] - Функция для отметки всех слов как выученных. (Нужна только в режиме слов).
+ * @param {function} [props.onMarkAll] - Функция для отметки всех слов как выученных. (Используется только в режиме слов).
  * @param {string} props.modeName - Название текущего режима.
  * @param {number} [props.completedItemsCount] - Количество завершенных элементов (для режима предложений).
  * @param {number} [props.remainingCount] - Сколько элементов осталось для следующего батча.
  * @param {boolean} [props.isFullLessonComplete] - Флаг, указывающий, завершен ли ВЕСЬ урок.
  */
 export default function StudyCompletionModal({
-  // 🔑 Инициализация wordsToLearn пустым массивом для защиты от ошибки .length
   wordsToLearn = [],
   onRestart,
   onClose,
   onMarkAll,
   modeName,
-  // Новые пропсы
   completedItemsCount,
   remainingCount = 0,
   isFullLessonComplete = false,
 }) {
-  // 🔑 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Определяем счетчик.
-  // Если передан completedItemsCount (для предложений), используем его.
-  // Иначе используем wordsToLearn.length (для слов).
+  // Определяем счетчик.
   const completedCount =
     completedItemsCount !== undefined
       ? completedItemsCount
       : wordsToLearn.length;
 
-  // Определяем, какой текст отображать и какую кнопку "Дальше" использовать
+  // Определяем, работаем ли мы с режимом предложений
   const isSentenceMode = completedItemsCount !== undefined;
 
-  // Текст для кнопки "Отметить как выученное" (недоступна в режиме предложений)
-  const markAllText = isSentenceMode
-    ? "Продолжить" // Если это предложения, то кнопка просто продолжает
-    : `Отметить все ${completedCount} как выученные`;
+  // --- Заголовки и Тексты ---
 
-  // Текст для заголовка модального окна
   let titleText = "Сессия завершена!";
   if (isSentenceMode && remainingCount > 0) {
     titleText = "Батч завершен";
   } else if (isSentenceMode && isFullLessonComplete) {
     titleText = "Отличная работа!";
+  } else if (!isSentenceMode && remainingCount === 0) {
+    titleText = "Поздравляем!"; // Весь урок слов завершен
   }
 
-  // Текст описания
   let descriptionText;
   if (isSentenceMode && isFullLessonComplete) {
     descriptionText = `Вы прошли все ${completedCount} предложений в этом уроке!`;
   } else if (isSentenceMode && remainingCount > 0) {
     descriptionText = `Вы завершили ${completedCount} предложений. Осталось: ${remainingCount}.`;
+  } else if (isSentenceMode && remainingCount === 0 && !isFullLessonComplete) {
+    descriptionText = `Вы завершили ${completedCount} предложений. Нажмите "Выйти", чтобы увидеть полный прогресс.`;
   } else {
+    // Режим слов
     descriptionText = `Вы прошли **${completedCount}** слов в режиме "${modeName}".`;
   }
+
+  const restartButtonText =
+    isSentenceMode && remainingCount > 0
+      ? "Продолжить / Загрузить следующий батч"
+      : "Повторить урок";
+
+  const showMarkAllButton = !isSentenceMode; // Кнопка "Отметить все" только для режимов слов
+
+  // --- UI Рендеринг ---
 
   return (
     <div className="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center p-4">
@@ -74,24 +79,28 @@ export default function StudyCompletionModal({
         </div>
 
         <div className="flex flex-col gap-3">
-          {/* Кнопка "Выучить все" / "Продолжить" */}
-          <button
-            onClick={onMarkAll} // В режиме предложений onMarkAll должен выполнять функцию onRestart/handleContinue
-            className={`flex items-center justify-center px-4 py-3 bg-green-600 text-white rounded-xl font-bold shadow-md hover:bg-green-700 transition duration-150 ${
-              isSentenceMode && isFullLessonComplete ? "hidden" : "" // Скрываем, если весь урок завершен в режиме предложений
-            }`}
-          >
-            <HiCheckCircle className="w-5 h-5 mr-2" />
-            {markAllText}
-          </button>
+          {/* Кнопка "Отметить все как выученные" (Только для режима слов) */}
+          {showMarkAllButton && (
+            <button
+              onClick={onMarkAll}
+              className="flex items-center justify-center px-4 py-3 bg-green-600 text-white rounded-xl font-bold shadow-md hover:bg-green-700 transition duration-150 dark:bg-green-700 dark:hover:bg-green-800"
+            >
+              <HiCheckCircle className="w-5 h-5 mr-2" />
+              Отметить все {completedCount} как выученные
+            </button>
+          )}
 
-          {/* Кнопка "Повторить" */}
+          {/* Кнопка "Повторить" / "Продолжить" (Обязательная) */}
           <button
             onClick={onRestart}
-            className="flex items-center justify-center px-4 py-3 bg-sky-500 text-white rounded-xl font-semibold hover:bg-sky-600 transition duration-150 dark:bg-sky-600 dark:hover:bg-sky-700"
+            className={`flex items-center justify-center px-4 py-3 text-white rounded-xl font-semibold transition duration-150 ${
+              showMarkAllButton
+                ? "bg-sky-500 hover:bg-sky-600 dark:bg-sky-600 dark:hover:bg-sky-700"
+                : "bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-800"
+            }`}
           >
             <HiArrowPath className="w-5 h-5 mr-2" />
-            {isSentenceMode ? "Загрузить следующий батч" : "Повторить урок"}
+            {restartButtonText}
           </button>
 
           {/* Кнопка "Выход" */}

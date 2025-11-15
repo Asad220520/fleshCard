@@ -1,6 +1,6 @@
 import { configureStore, createSlice } from "@reduxjs/toolkit";
 
-// Загружаем выученные слова из localStorage (если есть) по режимам
+// 💡 ИСПРАВЛЕНИЕ 1: Загружаем прогресс для нового режима
 const savedLearnedFlashcards = JSON.parse(
   localStorage.getItem("learnedFlashcards") || "[]"
 );
@@ -13,17 +13,22 @@ const savedLearnedQuiz = JSON.parse(
 const savedLearnedWriting = JSON.parse(
   localStorage.getItem("learnedWriting") || "[]"
 );
+const savedLearnedSentencePuzzle = JSON.parse(
+  localStorage.getItem("learnedSentencePuzzle") || "[]"
+);
 
 const wordsSlice = createSlice({
   name: "words",
   initialState: {
     list: [],
     index: 0,
-    // 💡 РАЗДЕЛЁННЫЙ ПРОГРЕСС
+    // РАЗДЕЛЁННЫЙ ПРОГРЕСС
     learnedFlashcards: savedLearnedFlashcards,
     learnedMatching: savedLearnedMatching,
     learnedQuiz: savedLearnedQuiz,
     learnedWriting: savedLearnedWriting,
+    // 💡 ИСПРАВЛЕНИЕ 2: Добавляем новое состояние
+    learnedSentencePuzzle: savedLearnedSentencePuzzle,
     currentLessonId: null,
   },
   reducers: {
@@ -38,9 +43,10 @@ const wordsSlice = createSlice({
       }
     },
 
-    // 💡 ОБНОВЛЁННЫЙ markLearned: Принимает word и mode
     markLearned: (state, action) => {
-      const { word, mode } = action.payload; // mode: 'flashcards', 'matching', 'quiz', 'writing'
+      // mode: 'flashcards', 'matching', 'quiz', 'writing', 'sentence_puzzle'
+      // Используется, когда слово выучено в ОДНОМ конкретном режиме.
+      const { word, mode } = action.payload;
 
       if (!word || !word.de || !word.lessonId || !mode) {
         console.warn(
@@ -70,6 +76,11 @@ const wordsSlice = createSlice({
           targetState = state.learnedWriting;
           targetKey = "learnedWriting";
           break;
+        // 💡 ИСПРАВЛЕНИЕ 3: Добавляем новый режим
+        case "sentence_puzzle":
+          targetState = state.learnedSentencePuzzle;
+          targetKey = "learnedSentencePuzzle";
+          break;
         default:
           console.error("Неизвестный режим markLearned:", mode);
           return;
@@ -85,6 +96,42 @@ const wordsSlice = createSlice({
         targetState.push({ ...word });
         localStorage.setItem(targetKey, JSON.stringify(targetState));
       }
+    },
+
+    // 💡 НОВОЕ ДЕЙСТВИЕ: Для отметки слова как выученного во ВСЕХ режимах
+    markMasterLearned: (state, action) => {
+      const { word } = action.payload; // Получаем только слово, режим не нужен
+
+      if (!word || !word.de || !word.lessonId) {
+        console.warn("Ошибка markMasterLearned: Некорректный формат payload.");
+        return;
+      }
+
+      // Список всех ключей прогресса
+      const progressKeys = [
+        "learnedFlashcards",
+        "learnedMatching",
+        "learnedQuiz",
+        "learnedWriting",
+        "learnedSentencePuzzle",
+      ];
+
+      progressKeys.forEach((key) => {
+        const targetState = state[key];
+
+        // Проверяем, что слова с таким DE и lessonId еще нет в целевом массиве
+        if (
+          !targetState.some(
+            (w) => w.de === word.de && w.lessonId === word.lessonId
+          )
+        ) {
+          // Добавляем слово в Redux State
+          targetState.push({ ...word });
+
+          // Обновляем localStorage для каждого ключа
+          localStorage.setItem(key, JSON.stringify(targetState));
+        }
+      });
     },
 
     removeLearned: (state, action) => {
@@ -117,18 +164,67 @@ const wordsSlice = createSlice({
           targetKey = "learnedQuiz";
           break;
         case "writing":
-          targetState = state.learnedWriting;
           targetKey = "learnedWriting";
+          break;
+        // 💡 ИСПРАВЛЕНИЕ 4: Добавляем новый режим
+        case "sentence_puzzle":
+          targetKey = "learnedSentencePuzzle";
           break;
         default:
           console.error("Неизвестный режим removeLearned:", mode);
           return;
       }
 
-      state[targetKey] = targetState.filter(
+      // Обновление состояния и localStorage
+      // NOTE: targetState не используется напрямую, но targetKey нужен для state[targetKey]
+      state[targetKey] = state[targetKey].filter(
         (w) => !(w.de === de && w.lessonId === targetLessonId)
       );
 
+      localStorage.setItem(targetKey, JSON.stringify(state[targetKey]));
+    },
+
+    clearLessonProgress: (state, action) => {
+      const { lessonId, mode } = action.payload;
+
+      if (!lessonId || !mode) {
+        console.warn(
+          "Невозможно очистить прогресс: отсутствует LessonId или Mode.",
+          action.payload
+        );
+        return;
+      }
+
+      let targetKey;
+
+      switch (mode) {
+        case "flashcards":
+          targetKey = "learnedFlashcards";
+          break;
+        case "matching":
+          targetKey = "learnedMatching";
+          break;
+        case "quiz":
+          targetKey = "learnedQuiz";
+          break;
+        case "writing":
+          targetKey = "learnedWriting";
+          break;
+        // 💡 ИСПРАВЛЕНИЕ 5: Добавляем новый режим
+        case "sentence_puzzle":
+          targetKey = "learnedSentencePuzzle";
+          break;
+        default:
+          console.error("Неизвестный режим clearLessonProgress:", mode);
+          return;
+      }
+
+      // Фильтруем и оставляем только слова из других уроков
+      state[targetKey] = state[targetKey].filter(
+        (w) => w.lessonId !== lessonId
+      );
+
+      // Обновляем localStorage
       localStorage.setItem(targetKey, JSON.stringify(state[targetKey]));
     },
 
@@ -153,17 +249,19 @@ const wordsSlice = createSlice({
       state.index = savedIndex;
     },
 
-    // 💡 ОБНОВЛЁННЫЙ resetLearned: Очищает все массивы прогресса
     resetLearned: (state) => {
       state.learnedFlashcards = [];
       state.learnedMatching = [];
       state.learnedQuiz = [];
       state.learnedWriting = [];
+      // 💡 ИСПРАВЛЕНИЕ 6: Сброс нового прогресса
+      state.learnedSentencePuzzle = [];
 
       localStorage.removeItem("learnedFlashcards");
       localStorage.removeItem("learnedMatching");
       localStorage.removeItem("learnedQuiz");
       localStorage.removeItem("learnedWriting");
+      localStorage.removeItem("learnedSentencePuzzle"); // 💡 ИСПРАВЛЕНИЕ 7: Удаление из localStorage
     },
     saveIndex: (state, action) => {
       state.index = action.payload;
@@ -181,11 +279,13 @@ export const {
   nextCard,
   prevCard,
   selectLesson,
-  // ✅ ДОБАВЛЕНО: Теперь экшен-креатор доступен
-  removeLearned, 
+  removeLearned,
   markLearned,
+  // 💡 ЭКСПОРТ НОВОГО ДЕЙСТВИЯ
+  markMasterLearned,
   resetLearned,
   saveIndex,
+  clearLessonProgress,
 } = wordsSlice.actions;
 
 export const store = configureStore({

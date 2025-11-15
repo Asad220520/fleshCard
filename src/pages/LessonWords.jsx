@@ -1,45 +1,81 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useParams, Link, useNavigate } from "react-router-dom";
-// Импортируем removeLearned
-import { removeLearned } from "../store/store";
+import { removeLearned } from "../store/store"; // removeLearned
 
-// ✅ 1. Оставляем только чистый импорт
 import AudioPlayer from "../components/AudioPlayer";
-
-// Иконки, которые используются в LessonWords:
 import {
   HiTrash,
   HiCheckCircle,
-  HiOutlineAnnotation, // Используется для "Выбрать все" и как иконка по умолчанию для выбора
+  HiOutlineAnnotation,
   HiArrowLeft,
   HiBookOpen,
 } from "react-icons/hi";
 
-// 💡 КОНСТАНТА: Выбираем целевой режим для ручного управления и отображения
-const TARGET_MODE = 'flashcards';
+// 💡 ИСПРАВЛЕНИЕ 1: Добавляем новый режим в список
+const ALL_MODES = [
+  "flashcards",
+  "matching",
+  "quiz",
+  "writing",
+  "sentence_puzzle",
+];
 
 export default function LessonWords() {
   const { lessonId } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  
-  // 💡 ОБНОВЛЕНИЕ: Читаем целевой массив learnedFlashcards
-  const { learnedFlashcards } = useSelector((state) => state.words);
-  
-  // 💡 ОБНОВЛЕНИЕ: Используем learnedFlashcards для получения списка слов
-  const words = learnedFlashcards.filter((w) => w.lessonId === lessonId);
+
+  // 💡 ИСПРАВЛЕНИЕ 2: Получаем новое состояние
+  const {
+    learnedFlashcards,
+    learnedMatching,
+    learnedQuiz,
+    learnedWriting,
+    learnedSentencePuzzle, // <-- Добавлено
+  } = useSelector((state) => state.words);
 
   const [selectedWords, setSelectedWords] = useState([]);
 
-  // --- Вспомогательная функция для диспатча удаления с режимом ---
-  const dispatchRemoveLearned = (word) => {
-    // 💡 ОБНОВЛЕНИЕ: Обязательно передаем mode
-    dispatch(removeLearned({ ...word, mode: TARGET_MODE }));
+  const words = useMemo(() => {
+    // 💡 ИСПРАВЛЕНИЕ 3: Включаем новый массив в объединенный список
+    const allLearned = [
+      ...learnedFlashcards,
+      ...learnedMatching,
+      ...learnedQuiz,
+      ...learnedWriting,
+      ...(learnedSentencePuzzle || []), // <-- Добавлено
+    ].filter((w) => w.lessonId === lessonId);
+
+    const uniqueWordsMap = new Map();
+    allLearned.forEach((word) => {
+      // Ключ для уникальности (DE + Lesson ID)
+      const key = `${word.de}-${word.lessonId}`;
+
+      // Чтобы сохранить все поля слова (exde, exru), которые могут понадобиться
+      if (!uniqueWordsMap.has(key)) {
+        uniqueWordsMap.set(key, word);
+      }
+    });
+
+    return Array.from(uniqueWordsMap.values());
+  }, [
+    lessonId,
+    learnedFlashcards,
+    learnedMatching,
+    learnedQuiz,
+    learnedWriting,
+    learnedSentencePuzzle, // <-- Добавлено в зависимости
+  ]);
+
+  const dispatchRemoveFromAll = (word) => {
+    // Удаляет слово из ВСЕХ режимов, включая 'sentence_puzzle'
+    ALL_MODES.forEach((mode) => {
+      dispatch(
+        removeLearned({ de: word.de, lessonId: word.lessonId, mode: mode })
+      );
+    });
   };
-
-
-  // --- Обработчики действий ---
 
   const handleToggleSelect = (word) => {
     const wordKey = `${word.de}-${word.lessonId}`;
@@ -55,8 +91,7 @@ export default function LessonWords() {
 
   const handleRemoveSelected = () => {
     selectedWords.forEach((word) => {
-      // 💡 ОБНОВЛЕНИЕ: Используем новую функцию удаления
-      dispatchRemoveLearned(word);
+      dispatchRemoveFromAll(word);
     });
     setSelectedWords([]);
   };
@@ -66,12 +101,11 @@ export default function LessonWords() {
       window.confirm(
         `Вы уверены, что хотите удалить ${
           words.length
-        } выученных слов из урока ${lessonId.toUpperCase()}?`
+        } выученных слов из урока ${lessonId.toUpperCase()} ИЗ ВСЕХ РЕЖИМОВ?`
       )
     ) {
       words.forEach((word) => {
-        // 💡 ОБНОВЛЕНИЕ: Используем новую функцию удаления
-        dispatchRemoveLearned(word);
+        dispatchRemoveFromAll(word);
       });
       setSelectedWords([]);
     }
@@ -85,8 +119,6 @@ export default function LessonWords() {
     }
   };
 
-  // --- UI Рендеринг ---
-
   if (words.length === 0)
     return (
       <div className="p-12 text-center text-gray-500 bg-gray-50 min-h-[50vh] dark:bg-gray-900 transition-colors duration-300">
@@ -95,8 +127,8 @@ export default function LessonWords() {
             Список пуст
           </h2>
           <p className="mt-2 text-gray-600 dark:text-gray-300">
-            Все слова, отмеченные как выученные (в режиме **Флеш-карт**), из этого урока
-            были удалены или еще не выучены.
+            Вы еще не выучили ни одного слова в этом уроке или все выученные
+            слова были удалены.
           </p>
           <Link
             to="/learned"
@@ -110,9 +142,7 @@ export default function LessonWords() {
 
   return (
     <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
-      {/* Улучшенный Заголовок и Навигация */}
       <div className="w-full max-w-lg mb-6 flex justify-between items-center">
-        {/* Кнопка "Назад" */}
         <button
           onClick={() => navigate("/learned")}
           className="flex items-center text-sky-700 hover:text-sky-800 transition font-semibold dark:text-sky-400 dark:hover:text-sky-300"
@@ -120,33 +150,29 @@ export default function LessonWords() {
           <HiArrowLeft className="w-6 h-6 mr-1" />
           <span className="hidden sm:inline">Назад к урокам</span>
         </button>
-        {/* Название урока */}
         <div className="flex items-center text-lg sm:text-2xl font-extrabold text-gray-800 dark:text-gray-50">
           <HiBookOpen className="w-6 h-6 mr-2 text-sky-600 dark:text-sky-400" />
           <span>Выучено: Урок {lessonId.toUpperCase()}</span>
         </div>
-        <div className="w-16"></div> {/* Для выравнивания */}
+        <div className="w-16"></div>
       </div>
 
-      {/* Групповые действия */}
       <div className="w-full max-w-lg mb-6 flex flex-col sm:flex-row justify-end items-center gap-3">
         <div className="flex gap-3">
-          {/* Кнопка "Удалить выбранное" */}
           <button
             onClick={handleRemoveSelected}
             disabled={selectedWords.length === 0}
             className="flex items-center px-4 py-2 bg-red-500 text-white rounded-xl shadow-md font-semibold hover:bg-red-600 transition disabled:bg-gray-400 disabled:cursor-not-allowed dark:bg-red-600 dark:hover:bg-red-700 dark:disabled:bg-gray-600"
-            title="Удалить выбранные слова"
+            title="Удалить выбранные слова из всех режимов"
           >
             <HiTrash className="w-5 h-5 mr-1" />
             Удалить ({selectedWords.length})
           </button>
 
-          {/* Кнопка "Удалить все" */}
           <button
             onClick={handleRemoveAll}
             className="flex items-center px-4 py-2 bg-red-500 text-white rounded-xl shadow-md font-semibold hover:bg-red-600 transition dark:bg-red-600 dark:hover:bg-red-700"
-            title="Удалить все слова из этого урока"
+            title="Удалить все выученные слова этого урока из всех режимов"
           >
             <HiTrash className="w-5 h-5" />
             <span className="ml-1 hidden sm:inline">Удалить все</span>
@@ -154,7 +180,6 @@ export default function LessonWords() {
         </div>
       </div>
 
-      {/* Кнопка Выбрать/Снять все */}
       <div className="w-full max-w-lg mb-4 flex justify-end">
         <button
           onClick={handleSelectAll}
@@ -172,7 +197,6 @@ export default function LessonWords() {
         </button>
       </div>
 
-      {/* Список слов */}
       <div className="grid grid-cols-1 gap-3 w-full max-w-lg">
         {words.map((word) => {
           const isSelected = selectedWords.some(
@@ -187,21 +211,18 @@ export default function LessonWords() {
                   ? "bg-sky-100 border-sky-500 dark:bg-sky-900 dark:border-sky-600 dark:shadow-xl"
                   : "bg-white border-transparent hover:shadow-lg dark:bg-gray-800 dark:hover:bg-gray-700 dark:hover:border-gray-600 dark:shadow-xl"
               }`}
-              onClick={() => handleToggleSelect(word)} // Клик по карточке для выбора
+              onClick={() => handleToggleSelect(word)}
             >
               <div className="flex items-center space-x-3">
-                {/* Индикатор выбора */}
                 {isSelected ? (
                   <HiCheckCircle className="w-6 h-6 text-sky-500 dark:text-sky-400" />
                 ) : (
                   <HiOutlineAnnotation className="w-6 h-6 text-gray-400 dark:text-gray-500" />
                 )}
 
-                {/* Слова и компонент Аудио */}
                 <div>
                   <div className="font-bold text-lg text-gray-800 flex items-center dark:text-gray-50">
                     {word.de}
-                    {/* Используем AudioPlayer с пропсом textToSpeak */}
                     <AudioPlayer textToSpeak={word.de} lang="de-DE" />
                   </div>
                   <div className="text-gray-600 text-sm dark:text-gray-300">
@@ -210,15 +231,13 @@ export default function LessonWords() {
                 </div>
               </div>
 
-              {/* Кнопка "Удалить" (индивидуально) */}
               <button
                 onClick={(e) => {
-                  e.stopPropagation(); // Предотвращаем срабатывание onClick родителя
-                  // 💡 ОБНОВЛЕНИЕ: Используем новую функцию удаления
-                  dispatchRemoveLearned(word);
+                  e.stopPropagation();
+                  dispatchRemoveFromAll(word);
                 }}
                 className="p-2 bg-yellow-100 text-yellow-700 rounded-full hover:bg-yellow-200 transition dark:bg-yellow-700 dark:text-yellow-200 dark:hover:bg-yellow-600"
-                title="Удалить это слово из выученных (только в режиме Флеш-карт)"
+                title="Удалить это слово из выученных (из всех режимов)"
               >
                 <HiTrash className="w-5 h-5" />
               </button>
