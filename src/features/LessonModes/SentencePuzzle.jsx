@@ -70,7 +70,6 @@ export default function SentencePuzzle() {
   }, [currentItem]);
 
   // 🔑 ФУНКЦИЯ: Сохранение прогресса
-  // ❌ useCallBack удален
   const saveProgress = (newCompletedIndices) => {
     try {
       localStorage.setItem(
@@ -83,7 +82,6 @@ export default function SentencePuzzle() {
   };
 
   // 🔑 ФУНКЦИЯ: Пометка текущего предложения как завершенного
-  // ❌ useCallBack удален
   const markCurrentCompleted = () => {
     if (currentItem && currentItem.originalIndex !== undefined) {
       setCompletedIndices((prev) => {
@@ -95,7 +93,6 @@ export default function SentencePuzzle() {
   };
 
   // 3. Функция для инициализации (перемешивания) слов
-  // ❌ useCallBack удален
   const initializeSentence = () => {
     if (currentItem) {
       setAssembledWords([]);
@@ -118,24 +115,28 @@ export default function SentencePuzzle() {
   };
 
   // 4. Инициализация (перезапуск) при смене предложения
-  // initializeSentence удалена из списка зависимостей
   useEffect(() => {
     if (currentItem) {
       initializeSentence();
     }
+    // initializeSentence удалена из списка зависимостей (как и в оригинале)
+    // currentItem добавлен, чтобы ловить его изменение
   }, [currentSentenceIndex, currentItem]);
 
   // 🔑 5. ЛОГИКА ЗАГРУЗКИ НОВОГО БАТЧА
-  // ❌ useCallBack удален
   const loadNextBatch = () => {
-    if (availableSentences.length === 0) {
+    const currentAvailableSentences = allLessonSentences
+      .map((sentence, index) => ({ ...sentence, originalIndex: index }))
+      .filter((sentence) => !completedIndices.has(sentence.originalIndex));
+
+    if (currentAvailableSentences.length === 0) {
       setSessionList([]);
       setIsPuzzleComplete(true);
       return;
     }
 
     // Берем следующий батч из доступных предложений и перемешиваем его
-    const nextBatch = shuffleArray(availableSentences).slice(
+    const nextBatch = shuffleArray(currentAvailableSentences).slice(
       0,
       MAX_SESSION_SIZE
     );
@@ -206,6 +207,7 @@ export default function SentencePuzzle() {
     // Важно: слова должны быть снова перемешаны
     const newShuffled = shuffleArray([...shuffledWords, wordToAddBack]);
     setShuffledWords(newShuffled);
+    setShuffleKey(Math.random()); // Принудительный сброс для гарантии правильной перерисовки
   };
 
   const checkAnswer = () => {
@@ -251,7 +253,8 @@ export default function SentencePuzzle() {
     setIsPuzzleComplete(false);
 
     // Перезагрузка для гарантии мгновенного старта с первого батча
-    window.location.reload();
+    // Используем navigate с перезагрузкой состояния для чистого сброса
+    navigate(0);
   };
 
   const handleRetry = () => {
@@ -275,24 +278,24 @@ export default function SentencePuzzle() {
   // Если все предложения урока завершены
   if (totalRemaining === 0 && isPuzzleComplete) {
     return (
-      <div className="p-12 text-green-600 text-center text-xl font-semibold bg-white rounded-xl shadow-lg m-6 dark:bg-gray-800 dark:text-green-400 dark:shadow-2xl min-h-screen flex items-center justify-center flex-col">
+      <div className="p-4 sm:p-12 text-green-600 text-center text-xl font-semibold bg-white rounded-xl shadow-lg m-4 sm:m-6 dark:bg-gray-800 dark:text-green-400 dark:shadow-2xl min-h-screen flex items-center justify-center flex-col">
         <span role="img" aria-label="party popper" className="text-3xl mr-2">
           🎉
         </span>{" "}
-        <h2 className="text-2xl font-bold mt-2">
+        <h2 className="text-xl sm:text-2xl font-bold mt-2">
           Отлично! Все **{totalSentences}** предложений урока{" "}
           {lessonId.toUpperCase()} завершены.
         </h2>
-        <div className="mt-6 flex space-x-4">
+        <div className="mt-6 flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4 w-full max-w-sm">
           <button
             onClick={handleGoBack}
-            className="bg-sky-500 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:bg-sky-600 transition-colors"
+            className="w-full bg-sky-500 text-white font-bold py-3 px-4 rounded-full shadow-lg hover:bg-sky-600 transition-colors text-lg"
           >
             Вернуться к уроку
           </button>
           <button
             onClick={handleRestartPuzzleMode}
-            className="bg-gray-500 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:bg-gray-600 transition-colors"
+            className="w-full bg-gray-500 text-white font-bold py-3 px-4 rounded-full shadow-lg hover:bg-gray-600 transition-colors text-lg"
           >
             Начать заново
           </button>
@@ -323,32 +326,33 @@ export default function SentencePuzzle() {
 
   // --- ОСНОВНОЙ РЕНДЕРИНГ ---
   return (
-    <div className="p-4 sm:p-6 flex flex-col items-center bg-gray-50 min-h-screen dark:bg-gray-900 transition-colors duration-300">
+    <div className="p-4 flex flex-col items-center bg-gray-50 min-h-screen dark:bg-gray-900 transition-colors duration-300">
       {/* Кнопка Назад */}
       <div className="w-full max-w-xl mb-4 self-center">
         <button
           onClick={handleGoBack}
-          className="flex items-center text-sky-700 hover:text-sky-800 transition font-semibold dark:text-sky-400 dark:hover:text-sky-300"
+          className="flex items-center text-sky-700 hover:text-sky-800 transition font-semibold text-sm sm:text-base dark:text-sky-400 dark:hover:text-sky-300"
         >
-          <HiArrowLeft className="w-6 h-6 mr-1" />
+          <HiArrowLeft className="w-5 h-5 sm:w-6 sm:h-6 mr-1" />
           <span className="hidden sm:inline">
             К уроку {lessonId.toUpperCase()}
           </span>
+          <span className="sm:hidden">Назад</span>
         </button>
       </div>
 
       {/* 🆕 Прогресс Батча */}
-      <div className="w-full max-w-xl mb-6 text-center">
-        <div className="text-sm font-medium text-gray-600 mb-2 dark:text-gray-400">
-          Прогресс **батча**: {currentSentenceIndex + 1} из {sessionList.length}
+      <div className="w-full max-w-xl mb-4 text-center">
+        <div className="text-xs font-medium text-gray-600 mb-1 dark:text-gray-400">
+          Батч: {currentSentenceIndex + 1} из {sessionList.length}
           <span className="block text-xs text-gray-400 mt-1 dark:text-gray-500">
-            Осталось всего предложений в уроке: {totalRemaining}
+            Осталось всего: {totalRemaining}
           </span>
         </div>
         {/* Индикатор прогресса */}
-        <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+        <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
           <div
-            className="bg-pink-500 h-2.5 rounded-full transition-all duration-300"
+            className="bg-pink-500 h-2 rounded-full transition-all duration-300"
             style={{
               width: `${
                 ((currentSentenceIndex + 1) / sessionList.length) * 100
@@ -358,23 +362,24 @@ export default function SentencePuzzle() {
         </div>
       </div>
 
-      {/* 1. ЗАГОЛОВОК */}
-      <h1 className="text-2xl font-bold text-pink-600 dark:text-pink-400 mb-2">
-        Соберите предложение
-      </h1>
+      {/* 1. ЗАГОЛОВОК И ПРЕДЛОЖЕНИЕ */}
+      <div className="w-full max-w-xl text-center mb-4">
+        <h1 className="text-xl font-bold text-pink-600 dark:text-pink-400 mb-1">
+          Соберите предложение
+        </h1>
+        <p className="text-lg font-semibold text-gray-800 dark:text-gray-200 text-center px-2">
+          **{currentItem.exru}**
+        </p>
+      </div>
 
-      <p className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4 text-center">
-        **{currentItem.exru}**
-      </p>
-
-      {/* 2. ПОДСКАЗКА: Ключевое слово */}
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-8 text-center">
+      {/* 2. ПОДСКАЗКА: Ключевое слово (меньше отступ) */}
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 text-center">
         (Ключевое слово: {currentItem.de} / {currentItem.ru})
       </p>
 
       {/* 3. Блок для собранного предложения */}
       <div
-        className={`w-full max-w-xl p-4 min-h-[80px] rounded-xl mb-6 shadow-inner 
+        className={`w-full max-w-xl p-3 min-h-[70px] rounded-xl mb-4 shadow-inner 
                       ${
                         status === "correct"
                           ? "bg-green-100 dark:bg-green-900/50"
@@ -388,7 +393,7 @@ export default function SentencePuzzle() {
             <button
               key={index}
               onClick={() => handleRemoveWord(word, index)}
-              className="bg-white text-gray-800 py-1 px-3 rounded-md shadow-md text-lg 
+              className="bg-white text-gray-800 py-1 px-2 rounded-md shadow-md text-base sm:text-lg 
                          hover:bg-gray-100 transition-colors dark:bg-gray-600 dark:text-gray-100 dark:hover:bg-gray-500"
               disabled={status !== null}
             >
@@ -401,15 +406,15 @@ export default function SentencePuzzle() {
       {/* 4. Блок с перемешанными словами (включая distractors) */}
       <div
         key={shuffleKey} // 🔑 ГАРАНТИЯ ПЕРЕМЕШИВАНИЯ: Принудительная перерисовка при смене ключа
-        className="w-full max-w-xl p-4 rounded-xl mb-8 bg-white shadow-lg dark:bg-gray-800"
+        className="w-full max-w-xl p-3 rounded-xl mb-6 bg-white shadow-lg dark:bg-gray-800"
       >
-        <div className="flex flex-wrap justify-center gap-3">
+        <div className="flex flex-wrap justify-center gap-2">
           {shuffledWords.map((word, index) => (
             <button
               key={word + index}
               onClick={() => handleWordClick(word, index)}
-              className="bg-sky-500 text-white font-medium py-2 px-4 rounded-full shadow-lg 
-                         hover:bg-sky-600 transition-transform transform active:scale-95 text-lg
+              className="bg-sky-500 text-white font-medium py-2 px-3 rounded-full shadow-md 
+                         hover:bg-sky-600 transition-transform transform active:scale-95 text-base
                          dark:bg-pink-700 dark:hover:bg-pink-600"
               disabled={status !== null}
             >
@@ -419,57 +424,57 @@ export default function SentencePuzzle() {
         </div>
       </div>
 
-      {/* 5. Панель управления */}
-      <div className="w-full max-w-xl flex justify-center space-x-4">
+      {/* 5. Панель управления (Оптимизация для мобильных: flex-wrap и меньшие кнопки) */}
+      <div className="w-full max-w-xl flex flex-wrap justify-center gap-3">
         {status === null ? (
           <>
-            {/* 1. Сброс */}
+            {/* 1. Сброс (Меньший размер) */}
             <button
               onClick={handleRetry}
-              className="flex items-center bg-gray-400 text-white font-bold py-2 px-4 rounded-full shadow-lg hover:bg-gray-500 transition-colors"
+              className="flex items-center bg-gray-400 text-white font-bold py-2 px-3 rounded-full shadow-lg hover:bg-gray-500 transition-colors text-sm"
             >
-              <HiRefresh className="w-5 h-5 mr-1" /> Сброс
+              <HiRefresh className="w-4 h-4 mr-1" /> Сброс
             </button>
 
-            {/* 2. Проверить */}
+            {/* 2. Проверить (Основная кнопка) */}
             <button
               onClick={checkAnswer}
-              className="flex items-center bg-green-500 text-white font-bold py-2 px-4 rounded-full shadow-lg hover:bg-green-600 transition-colors"
+              className="flex items-center bg-green-500 text-white font-bold py-2 px-5 rounded-full shadow-lg hover:bg-green-600 transition-colors text-base"
               disabled={assembledWords.length === 0}
             >
               <HiCheck className="w-5 h-5 mr-1" /> Проверить
             </button>
 
-            {/* 3. ПРОПУСТИТЬ */}
+            {/* 3. ПРОПУСТИТЬ (Меньший размер) */}
             <button
               onClick={skipSentence}
-              className="flex items-center bg-amber-500 text-white font-bold py-2 px-4 rounded-full shadow-lg hover:bg-amber-600 transition-colors"
+              className="flex items-center bg-amber-500 text-white font-bold py-2 px-3 rounded-full shadow-lg hover:bg-amber-600 transition-colors text-sm"
             >
-              Пропустить <HiArrowRight className="w-5 h-5 ml-1" />
+              Пропустить <HiArrowRight className="w-4 h-4 ml-1" />
             </button>
           </>
         ) : status === "correct" ? (
           // Ответ верен
           <button
             onClick={nextSentence}
-            className="flex items-center bg-sky-500 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:bg-sky-600 transition-colors text-xl"
+            className="w-full max-w-sm flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:bg-sky-600 transition-colors text-lg"
           >
             Отлично! Далее <HiArrowRight className="w-6 h-6 ml-2" />
           </button>
         ) : (
           // Ответ неверен или пропущен (status === 'incorrect' || status === 'skipped')
-          <div className="flex items-center space-x-4">
+          <div className="flex flex-wrap justify-center gap-3 w-full max-w-sm">
             <button
               onClick={handleRetry}
-              className="flex items-center bg-gray-400 text-white font-bold py-2 px-6 rounded-full shadow-lg hover:bg-gray-500 transition-colors"
+              className="flex-grow flex items-center justify-center bg-gray-400 text-white font-bold py-2 px-4 rounded-full shadow-lg hover:bg-gray-500 transition-colors text-base"
             >
-              <HiRefresh className="w-5 h-5 mr-2" /> Повторить
+              <HiRefresh className="w-5 h-5 mr-1" /> Повторить
             </button>
             <button
               onClick={nextSentence}
-              className="flex items-center bg-sky-500 text-white font-bold py-2 px-6 rounded-full shadow-lg hover:bg-sky-600 transition-colors"
+              className="flex-grow flex items-center justify-center bg-sky-500 text-white font-bold py-2 px-4 rounded-full shadow-lg hover:bg-sky-600 transition-colors text-base"
             >
-              Продолжить <HiArrowRight className="w-5 h-5 ml-2" />
+              Продолжить <HiArrowRight className="w-5 h-5 ml-1" />
             </button>
           </div>
         )}
@@ -478,7 +483,7 @@ export default function SentencePuzzle() {
       {/* 6. Отображение правильного ответа после ошибки или пропуска */}
       {showAnswer && (
         <div
-          className={`mt-4 p-4 rounded-lg shadow w-full max-w-xl ${
+          className={`mt-4 p-3 rounded-lg shadow w-full max-w-xl ${
             status === "incorrect"
               ? "bg-red-50 dark:bg-red-900"
               : "bg-amber-50 dark:bg-amber-900"
@@ -489,10 +494,10 @@ export default function SentencePuzzle() {
               ? "❌ Неверно. Правильный ответ:"
               : "Правильный ответ (Пропущено):"}
           </p>
-          <p className="text-lg font-mono text-gray-800 dark:text-gray-100">
+          <p className="text-base font-mono text-gray-800 dark:text-gray-100">
             {currentItem.exde}
           </p>
-          <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+          <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
             ({currentItem.exru})
           </p>
         </div>

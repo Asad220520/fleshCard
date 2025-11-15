@@ -11,6 +11,7 @@ import {
   HiArrowRight,
   HiArrowLeft, // 🆕 Добавил HiArrowLeft
 } from "react-icons/hi";
+import LessonComplete from "../../components/LessonComplete";
 
 // Функция нормализации (оставлена без изменений)
 function normalize(str) {
@@ -149,14 +150,7 @@ export default function WritingMode() {
 
   // 1. Если все слова в пуле выучены
   if (allRemainingList.length === 0 && list && list.length > 0)
-    return (
-      <div className="p-12 text-green-600 text-center text-xl font-semibold bg-white rounded-xl shadow-lg m-6 dark:bg-gray-800 dark:text-green-400 dark:shadow-2xl">
-        <span role="img" aria-label="party popper" className="text-3xl">
-          🎉
-        </span>{" "}
-        Отлично! Все слова этого урока выучены в режиме письма.
-      </div>
-    );
+    return <LessonComplete lessonId={lessonId} onGoBack={handleGoBack} />;
 
   // 2. Если сессия завершена (конец батча)
   if (isSessionComplete) {

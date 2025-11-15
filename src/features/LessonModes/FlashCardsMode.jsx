@@ -13,6 +13,7 @@ import {
   HiOutlineRefresh,
 } from "react-icons/hi";
 import AudioPlayer from "../../components/AudioPlayer"; // Предполагается, что 'AudioPlayer' доступен
+import LessonComplete from "../../components/LessonComplete";
 
 // КОНСТАНТА
 const MAX_SESSION_SIZE = 15;
@@ -162,7 +163,7 @@ export default function FlashCardsMode() {
   };
 
   const handleGoBack = () => {
-    navigate(`/lesson/${lessonId}/flashcards`);
+    navigate(`/lesson/${lessonId}`);
   };
 
   // 1. Финальное сообщение (если finalRemainingList.length === 0)
@@ -172,14 +173,7 @@ export default function FlashCardsMode() {
     list.length > 0 &&
     !isSessionComplete
   )
-    return (
-      <div className="p-12 text-green-600 text-center text-xl font-semibold bg-white rounded-xl shadow-lg m-6 dark:bg-gray-800 dark:text-green-400 dark:shadow-2xl">
-        <span role="img" aria-label="party popper" className="text-3xl">
-          🎉
-        </span>{" "}
-        Отлично! Все слова этого урока выучены.
-      </div>
-    );
+    return <LessonComplete lessonId={lessonId} onGoBack={handleGoBack} />;
 
   // 2. Если сессия завершена, показываем модальное окно
   if (isSessionComplete) {

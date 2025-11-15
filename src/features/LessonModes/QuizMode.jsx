@@ -5,6 +5,7 @@ import { markLearned, selectLesson } from "../../store/store";
 import { lessons } from "../../data";
 // Импорт иконок
 import { HiCheck, HiX, HiArrowRight, HiArrowLeft } from "react-icons/hi"; // 🆕 Добавил HiArrowLeft
+import LessonComplete from "../../components/LessonComplete";
 
 // 🆕 КОНСТАНТА: Максимальное количество слов в одной учебной сессии
 const MAX_SESSION_SIZE = 15;
@@ -45,14 +46,6 @@ export default function QuizMode() {
   }, [allRemainingList, sessionList.length]);
 
   const current = sessionList[index] || null;
-
-  // 2. Проверка завершения сессии (батча)
-  useEffect(() => {
-    if (sessionList.length > 0 && index >= sessionList.length) {
-      // Сессия завершена. Перенаправляем для перезапуска или финального сообщения.
-      navigate(`/lesson/${lessonId}`, { state: { quizComplete: true } });
-    }
-  }, [index, sessionList.length, totalRemaining, lessonId, navigate]);
 
   // Генерируем варианты (зависит от current, который теперь из sessionList)
   useEffect(() => {
@@ -116,14 +109,7 @@ export default function QuizMode() {
 
   // 1. Если все слова в уроке выучены
   if (totalRemaining === 0)
-    return (
-      <div className="p-12 text-green-600 text-center text-xl font-semibold bg-white rounded-xl shadow-lg m-6 dark:bg-gray-800 dark:text-green-400 dark:shadow-2xl">
-        <span role="img" aria-label="party popper" className="text-3xl">
-          🎉
-        </span>{" "}
-        Отлично! Все слова этого урока выучены в режиме викторины.
-      </div>
-    );
+    return <LessonComplete lessonId={lessonId} onGoBack={handleGoBack} />;
 
   // 2. Если батч еще не загружен
   if (sessionList.length === 0) return null;
