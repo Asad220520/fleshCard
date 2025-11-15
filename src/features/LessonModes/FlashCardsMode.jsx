@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useParams, useNavigate } from "react-router-dom";
+// 💡 Убедитесь, что markLearned импортирован
 import { selectLesson, markLearned } from "../../store/store";
-import { lessons } from "../../data"; // Предполагается, что 'lessons' доступны
+import { lessons } from "../../data";
 import StudyCompletionModal from "../../components/StudyCompletionModal";
 
 // Импорт иконок
@@ -12,13 +13,13 @@ import {
   HiCheck,
   HiOutlineRefresh,
 } from "react-icons/hi";
-import AudioPlayer from "../../components/AudioPlayer"; // Предполагается, что 'AudioPlayer' доступен
+import AudioPlayer from "../../components/AudioPlayer";
 import LessonComplete from "../../components/LessonComplete";
 
 // КОНСТАНТА
 const MAX_SESSION_SIZE = 15;
 
-// Стили для 3D-переворота (Оставлены без изменений)
+// Стили для 3D-переворота
 const flipCardStyles = {
   perspective: "1000px",
   width: "100%",
@@ -52,67 +53,61 @@ export default function FlashCardsMode() {
   const { lessonId } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  // list и learned читаются из Redux
-  const { list, learned } = useSelector((state) => state.words);
+  
+  // 💡 ИСПОЛЬЗУЕМ learnedFlashcards
+  const { list, learnedFlashcards } = useSelector((state) => state.words);
 
   // Состояния для логики
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [sessionList, setSessionList] = useState([]);
   const [isSessionComplete, setIsSessionComplete] = useState(false);
-  // НОВОЕ СОСТОЯНИЕ: Счётчик для принудительного обновления useEffect
   const [restartCount, setRestartCount] = useState(0);
 
   // 1. Геттер для получения актуального списка
   const getRemainingList = useCallback(() => {
     return (
       list?.filter(
+        // 💡 ФИЛЬТРУЕМ ПО learnedFlashcards
         (w) =>
-          !learned.some((lw) => lw.de === w.de && lw.lessonId === w.lessonId)
+          !learnedFlashcards.some(
+            (lw) => lw.de === w.de && lw.lessonId === w.lessonId
+          )
       ) || []
     );
-  }, [list, learned]); // Зависит от Redux-данных
+  }, [list, learnedFlashcards]); // Зависит от Redux-данных
 
-  // 🔑 ПЕРЕРАСЧЕТ remainingList и totalRemaining
   const finalRemainingList = getRemainingList();
   const totalRemaining = finalRemainingList.length;
 
   const current = sessionList[index];
 
-  // 1. Загрузка урока (оставлена без изменений)
+  // 1. Загрузка урока
   useEffect(() => {
     if ((!list || list.length === 0) && lessons[lessonId]) {
       dispatch(selectLesson({ words: lessons[lessonId], lessonId }));
     }
   }, [list, dispatch, lessonId]);
 
-  // 🔑 handleRestartSession теперь увеличивает restartCount
+  // 2. handleRestartSession
   const handleRestartSession = useCallback(() => {
     setIsSessionComplete(false);
     setIndex(0);
     setFlipped(false);
-
-    // КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Увеличиваем счетчик для принудительного перезапуска useEffect
     setRestartCount((prev) => prev + 1);
-
-    // Очищаем sessionList, чтобы useEffect ниже сработал и заполнил его
     setSessionList([]);
   }, []);
 
-  // ✅ НОВАЯ ЛОГИКА: Инициализация sessionList зависит от restartCount
+  // 3. Инициализация sessionList
   useEffect(() => {
-    // 1. Используем геттер для получения АКТУАЛЬНОГО списка
     const actualRemainingList = getRemainingList();
-
-    // Логика загрузки батча
     if (actualRemainingList.length > 0) {
-      // Берем батч из актуального списка
       const initialBatch = actualRemainingList.slice(0, MAX_SESSION_SIZE);
       setSessionList(initialBatch);
     }
-  }, [getRemainingList, restartCount]); // 👈 НОВАЯ КРИТИЧЕСКАЯ ЗАВИСИМОСТЬ!
+  }, [getRemainingList, restartCount]); 
 
-  // 3. Проверка завершения сессии (оставлена без изменений)
+  // 4. Проверка завершения сессии
   useEffect(() => {
     if (sessionList.length > 0 && index >= sessionList.length) {
       setIsSessionComplete(true);
@@ -124,7 +119,6 @@ export default function FlashCardsMode() {
   // Функции навигации
   const next = useCallback(() => {
     setFlipped(false);
-    // Переход к следующему индексу в рамках sessionList, если он не последний
     if (index < sessionList.length) {
       setIndex((i) => i + 1);
     }
@@ -138,22 +132,20 @@ export default function FlashCardsMode() {
   // КНОПКА "Я знаю это слово"
   const handleKnow = () => {
     if (current) {
-      // markLearned здесь, чтобы слово сразу ушло из пула
-      dispatch(markLearned({ word: current }));
+      // 💡 ДИСПАТЧ С mode: 'flashcards'
+      dispatch(markLearned({ word: current, mode: "flashcards" }));
       next();
     }
   };
 
   const handleFlip = () => setFlipped((f) => !f);
 
-  // ✅ handleMarkAllAsLearned
+  // handleMarkAllAsLearned
   const handleMarkAllAsLearned = useCallback(() => {
-    // 1. Отметить все слова
     sessionList.forEach((word) => {
-      dispatch(markLearned({ word }));
+      // 💡 ДИСПАТЧ С mode: 'flashcards'
+      dispatch(markLearned({ word, mode: "flashcards" }));
     });
-
-    // 2. Сброс состояния и перезапуск.
     handleRestartSession();
   }, [sessionList, dispatch, handleRestartSession]);
 
@@ -166,7 +158,7 @@ export default function FlashCardsMode() {
     navigate(`/lesson/${lessonId}`);
   };
 
-  // 1. Финальное сообщение (если finalRemainingList.length === 0)
+  // 1. Финальное сообщение
   if (
     finalRemainingList.length === 0 &&
     list &&
@@ -242,7 +234,6 @@ export default function FlashCardsMode() {
           >
             <span className="text-4xl font-bold mb-4">{current.de}</span>
 
-            {/* ✅ ИНТЕГРАЦИЯ AUDIO PLAYER */}
             <AudioPlayer
               textToSpeak={current.de}
               lang="de-DE"

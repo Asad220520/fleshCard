@@ -15,6 +15,9 @@ import {
   HiOutlineCheckCircle,
 } from "react-icons/hi";
 
+// 💡 КОНСТАНТА: Выбираем целевой режим для ручного управления
+const TARGET_MODE = 'flashcards'; // Будем использовать learnedFlashcards для чтения/записи
+
 /**
  * Страница, отображающая ПОЛНЫЙ список слов для текущего урока,
  * с возможностью озвучки и отметки статуса (выучено/не выучено).
@@ -25,8 +28,9 @@ export default function ListWords() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  const { list, learned } = useSelector((state) => state.words);
-
+  // 💡 ИСПОЛЬЗУЕМ learnedFlashcards ВМЕСТО УСТАРЕВШЕГО learned
+  const { list, learnedFlashcards } = useSelector((state) => state.words);
+  
   // Слова для отображения: полный список из Redux Store
   const words = list?.filter((w) => w.lessonId === lessonId) || [];
 
@@ -43,19 +47,21 @@ export default function ListWords() {
 
   /** Переключает статус слова между "выучено" и "не выучено". */
   const handleToggleLearned = (word, isLearned) => {
-    // ✅ ИСПРАВЛЕНИЕ: Передаем ПОЛНЫЙ объект слова, чтобы сохранить exde и exru в Redux.
+    // ✅ ИСПРАВЛЕНИЕ: Передаем ПОЛНЫЙ объект слова и ОБЯЗАТЕЛЬНО режим (mode).
     const wordData = {
       ...word, // Копируем все поля (de, ru, exde, exru, lessonId и т.д.)
+      mode: TARGET_MODE, // 💡 ОБЯЗАТЕЛЬНО ДОБАВЛЯЕМ РЕЖИМ
     };
 
     if (isLearned) {
       // Отмечаем как невыученное (удаляем из learned).
-      // removeLearned ожидает {de, lessonId}, что есть в wordData.
+      // removeLearned ожидает {de, lessonId, mode}
       dispatch(removeLearned(wordData));
     } else {
       // Отмечаем как выученное (добавляем в learned).
-      // markLearned ожидает { word: wordData }
-      dispatch(markLearned({ word: wordData }));
+      // markLearned ожидает { word: wordData, mode }
+      // В Redux Store markLearned извлекает mode из wordData, но лучше передать явно
+      dispatch(markLearned({ word: wordData, mode: TARGET_MODE }));
     }
   };
 
@@ -118,14 +124,15 @@ export default function ListWords() {
       {/* Инструкция */}
       <p className="w-full max-w-lg mb-4 text-sm text-gray-600 text-center dark:text-gray-400">
         {words.length} слов в уроке. Нажмите на значок справа, чтобы отметить
-        слово как выученное/невыученное.
+        слово как выученное/невыученное. (Используется прогресс режима{" "}
+        <span className="font-bold">Флеш-карт</span>).
       </p>
 
       {/* Список слов */}
       <div className="grid grid-cols-1 gap-4 w-full max-w-lg">
         {words.map((word) => {
           // Определяем, выучено ли слово
-          const isLearned = learned.some(
+          const isLearned = learnedFlashcards.some( // 💡 ИСПОЛЬЗУЕМ learnedFlashcards
             // Проверка должна быть по de и lessonId (как и в Redux)
             (w) => w.de === word.de && w.lessonId === word.lessonId
           );
@@ -173,7 +180,7 @@ export default function ListWords() {
                   </span>
                 </div>
 
-                {/* 2. ✅ НОВЫЙ БЛОК: Предложения (exde / exru) */}
+                {/* 2. БЛОК: Предложения (exde / exru) */}
                 <div className="mt-3 pt-2 border-t border-gray-100 dark:border-gray-700">
                   <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
                     Пример:

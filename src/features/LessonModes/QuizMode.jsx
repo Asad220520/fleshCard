@@ -4,17 +4,18 @@ import { useParams, useNavigate } from "react-router-dom";
 import { markLearned, selectLesson } from "../../store/store";
 import { lessons } from "../../data";
 // Импорт иконок
-import { HiCheck, HiX, HiArrowRight, HiArrowLeft } from "react-icons/hi"; // 🆕 Добавил HiArrowLeft
+import { HiCheck, HiX, HiArrowRight, HiArrowLeft } from "react-icons/hi";
 import LessonComplete from "../../components/LessonComplete";
 
-// 🆕 КОНСТАНТА: Максимальное количество слов в одной учебной сессии
+// КОНСТАНТА: Максимальное количество слов в одной учебной сессии
 const MAX_SESSION_SIZE = 15;
 
 export default function QuizMode() {
   const { lessonId } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { list, learned } = useSelector((state) => state.words);
+  // 💡 ИСПОЛЬЗУЕМ learnedQuiz
+  const { list, learnedQuiz } = useSelector((state) => state.words);
 
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState(null);
@@ -31,7 +32,9 @@ export default function QuizMode() {
   // Список всех невыученных слов (весь пул)
   const allRemainingList =
     list?.filter(
-      (w) => !learned.some((lw) => lw.de === w.de && lw.lessonId === w.lessonId)
+      // 💡 ФИЛЬТРУЕМ ПО learnedQuiz
+      (w) =>
+        !learnedQuiz.some((lw) => lw.de === w.de && lw.lessonId === w.lessonId)
     ) || [];
 
   const totalRemaining = allRemainingList.length;
@@ -47,7 +50,7 @@ export default function QuizMode() {
 
   const current = sessionList[index] || null;
 
-  // Генерируем варианты (зависит от current, который теперь из sessionList)
+  // Генерируем варианты
   useEffect(() => {
     if (!current) {
       setOptions([]);
@@ -85,16 +88,16 @@ export default function QuizMode() {
     setSelected(opt);
     // Если ответ верный, помечаем его как выученный (в Redux) и переходим
     if (opt.de === current.de) {
-      dispatch(markLearned({ word: current }));
+      // 💡 ДИСПАТЧ С mode: 'quiz'
+      dispatch(markLearned({ word: current, mode: "quiz" }));
       advance(1000); // С задержкой, чтобы увидеть зеленый
     }
-    // Если ответ неверный, просто ждем, пока пользователь не нажмет "Далее"
   };
 
   const handleKnow = () => {
     if (current) {
-      // Mark as learned
-      dispatch(markLearned({ word: current }));
+      // 💡 ДИСПАТЧ С mode: 'quiz'
+      dispatch(markLearned({ word: current, mode: "quiz" }));
       // Переходим к следующему слову немедленно
       advance(0);
     }
@@ -102,7 +105,6 @@ export default function QuizMode() {
 
   const handleDontKnow = () => advance(0); // Пропустить и повторить позже
 
-  // 🆕 Функция для кнопки "Назад"
   const handleGoBack = () => {
     navigate(`/lesson/${lessonId}`);
   };
@@ -116,7 +118,7 @@ export default function QuizMode() {
 
   return (
     <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
-      {/* 🆕 Кнопка Назад (Добавлен новый блок) */}
+      {/* Кнопка Назад */}
       <div className="w-full max-w-lg mb-4 self-center">
         <button
           onClick={handleGoBack}

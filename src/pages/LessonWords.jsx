@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useParams, Link, useNavigate } from "react-router-dom";
+// Импортируем removeLearned
 import { removeLearned } from "../store/store";
 
 // ✅ 1. Оставляем только чистый импорт
@@ -15,15 +16,28 @@ import {
   HiBookOpen,
 } from "react-icons/hi";
 
+// 💡 КОНСТАНТА: Выбираем целевой режим для ручного управления и отображения
+const TARGET_MODE = 'flashcards';
+
 export default function LessonWords() {
   const { lessonId } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { learned } = useSelector((state) => state.words);
+  
+  // 💡 ОБНОВЛЕНИЕ: Читаем целевой массив learnedFlashcards
+  const { learnedFlashcards } = useSelector((state) => state.words);
+  
+  // 💡 ОБНОВЛЕНИЕ: Используем learnedFlashcards для получения списка слов
+  const words = learnedFlashcards.filter((w) => w.lessonId === lessonId);
 
   const [selectedWords, setSelectedWords] = useState([]);
 
-  const words = learned.filter((w) => w.lessonId === lessonId);
+  // --- Вспомогательная функция для диспатча удаления с режимом ---
+  const dispatchRemoveLearned = (word) => {
+    // 💡 ОБНОВЛЕНИЕ: Обязательно передаем mode
+    dispatch(removeLearned({ ...word, mode: TARGET_MODE }));
+  };
+
 
   // --- Обработчики действий ---
 
@@ -41,7 +55,8 @@ export default function LessonWords() {
 
   const handleRemoveSelected = () => {
     selectedWords.forEach((word) => {
-      dispatch(removeLearned(word));
+      // 💡 ОБНОВЛЕНИЕ: Используем новую функцию удаления
+      dispatchRemoveLearned(word);
     });
     setSelectedWords([]);
   };
@@ -55,7 +70,8 @@ export default function LessonWords() {
       )
     ) {
       words.forEach((word) => {
-        dispatch(removeLearned(word));
+        // 💡 ОБНОВЛЕНИЕ: Используем новую функцию удаления
+        dispatchRemoveLearned(word);
       });
       setSelectedWords([]);
     }
@@ -79,7 +95,8 @@ export default function LessonWords() {
             Список пуст
           </h2>
           <p className="mt-2 text-gray-600 dark:text-gray-300">
-            Все слова из этого урока были удалены или еще не выучены.
+            Все слова, отмеченные как выученные (в режиме **Флеш-карт**), из этого урока
+            были удалены или еще не выучены.
           </p>
           <Link
             to="/learned"
@@ -106,7 +123,7 @@ export default function LessonWords() {
         {/* Название урока */}
         <div className="flex items-center text-lg sm:text-2xl font-extrabold text-gray-800 dark:text-gray-50">
           <HiBookOpen className="w-6 h-6 mr-2 text-sky-600 dark:text-sky-400" />
-          <span>Урок {lessonId.toUpperCase()}</span>
+          <span>Выучено: Урок {lessonId.toUpperCase()}</span>
         </div>
         <div className="w-16"></div> {/* Для выравнивания */}
       </div>
@@ -197,10 +214,11 @@ export default function LessonWords() {
               <button
                 onClick={(e) => {
                   e.stopPropagation(); // Предотвращаем срабатывание onClick родителя
-                  dispatch(removeLearned(word));
+                  // 💡 ОБНОВЛЕНИЕ: Используем новую функцию удаления
+                  dispatchRemoveLearned(word);
                 }}
                 className="p-2 bg-yellow-100 text-yellow-700 rounded-full hover:bg-yellow-200 transition dark:bg-yellow-700 dark:text-yellow-200 dark:hover:bg-yellow-600"
-                title="Удалить это слово из выученных"
+                title="Удалить это слово из выученных (только в режиме Флеш-карт)"
               >
                 <HiTrash className="w-5 h-5" />
               </button>

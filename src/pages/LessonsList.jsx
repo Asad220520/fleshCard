@@ -1,20 +1,46 @@
-import { useSelector } from "react-redux"; // 🆕 Добавил useSelector
+import { useSelector } from "react-redux";
 import { lessonsList, lessons } from "../data";
 import { Link } from "react-router-dom";
 // Импортируем иконки
 import { HiOutlineBookOpen, HiArrowRight, HiCheckCircle } from "react-icons/hi";
 
-export default function LessonsList() {
-  // 🆕 Получаем состояние выученных слов из Redux
-  const { list, learned } = useSelector((state) => state.words);
+// --- Вспомогательная функция для получения уникальных выученных слов ---
+const getUniqueLearnedWords = (wordsState) => {
+    const allWords = [
+      ...wordsState.learnedFlashcards,
+      ...wordsState.learnedMatching,
+      ...wordsState.learnedQuiz,
+      ...wordsState.learnedWriting,
+    ];
+    
+    const uniqueWordsMap = new Map();
+    
+    allWords.forEach((word) => {
+      // Ключ для уникальности: Немецкое слово + ID урока
+      const key = `${word.de}-${word.lessonId}`;
+      if (!uniqueWordsMap.has(key)) {
+        uniqueWordsMap.set(key, word);
+      }
+    });
 
-  // 🆕 Функция для расчета прогресса
+    return Array.from(uniqueWordsMap.values());
+};
+
+export default function LessonsList() {
+  // 💡 ОБНОВЛЕНИЕ: Получаем все необходимые части стейта
+  const wordsState = useSelector((state) => state.words);
+  const { list } = wordsState;
+  
+  // Рассчитываем уникальный объединенный список выученных слов один раз
+  const allUniqueLearned = getUniqueLearnedWords(wordsState);
+
+  // 💡 ОБНОВЛЕНИЕ: Функция для расчета прогресса
   const getProgress = (lessonId) => {
     // 1. Все слова в этом уроке (из data.js)
     const allWords = lessons[lessonId] ? lessons[lessonId].length : 0;
 
-    // 2. Выученные слова в этом уроке (из Redux store)
-    const learnedCount = learned.filter((w) => w.lessonId === lessonId).length;
+    // 2. Выученные слова в этом уроке (из объединенного списка)
+    const learnedCount = allUniqueLearned.filter((w) => w.lessonId === lessonId).length;
 
     // 3. Слов в Redux (иногда нужно для полной картины)
     const totalInStore = list
@@ -27,6 +53,7 @@ export default function LessonsList() {
     return {
       learned: learnedCount,
       total: total,
+      // 💡 Проверка завершенности: выученные слова должны совпадать с общим количеством слов
       isComplete: total > 0 && learnedCount === total,
     };
   };

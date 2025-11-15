@@ -11,10 +11,43 @@ const pluralizeWords = (count) => {
 };
 
 export default function LearnedWords() {
-  const { learned } = useSelector((state) => state.words);
+  // 💡 ОБНОВЛЕНИЕ: Получаем все четыре массива прогресса
+  const {
+    learnedFlashcards,
+    learnedMatching,
+    learnedQuiz,
+    learnedWriting,
+  } = useSelector((state) => state.words);
 
-  // Собираем уроки, из которых есть выученные слова
-  const lessonsMap = learned.reduce((acc, word) => {
+  // --- 💡 ФУНКЦИЯ ОБЪЕДИНЕНИЯ И УДАЛЕНИЯ ДУБЛИКАТОВ ---
+  const getAllUniqueLearnedWords = () => {
+    // 1. Объединяем все массивы
+    const allWords = [
+      ...learnedFlashcards,
+      ...learnedMatching,
+      ...learnedQuiz,
+      ...learnedWriting,
+    ];
+    
+    // 2. Используем Map для хранения уникальных слов по ключу (de + lessonId)
+    const uniqueWordsMap = new Map();
+    
+    allWords.forEach((word) => {
+      // Ключ для уникальности: Немецкое слово + ID урока
+      const key = `${word.de}-${word.lessonId}`;
+      if (!uniqueWordsMap.has(key)) {
+        uniqueWordsMap.set(key, word);
+      }
+    });
+
+    // 3. Возвращаем массив уникальных слов
+    return Array.from(uniqueWordsMap.values());
+  };
+  
+  const allUniqueLearned = getAllUniqueLearnedWords();
+  
+  // Собираем уроки, из которых есть выученные слова (теперь из объединенного списка)
+  const lessonsMap = allUniqueLearned.reduce((acc, word) => {
     // ✅ ИСПРАВЛЕНИЕ ДАННЫХ: Убеждаемся, что lessonId существует, является строкой и не пустой.
     if (
       word.lessonId &&
@@ -32,7 +65,7 @@ export default function LearnedWords() {
   const lessonIds = Object.keys(lessonsMap).sort(); // Сортируем ID для последовательного отображения
 
   // --- УСЛОВНЫЙ РЕНДЕРИНГ: Пустой список ---
-  if (learned.length === 0)
+  if (allUniqueLearned.length === 0)
     return (
       <div className="flex flex-col items-center justify-center p-4 sm:p-6 bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
         <div className="p-8 text-center text-gray-500 bg-white rounded-xl shadow-lg border-2 border-dashed border-gray-300 m-6 max-w-sm dark:bg-gray-800 dark:border-gray-700 dark:shadow-xl">

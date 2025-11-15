@@ -1,507 +1,330 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
+import { useSelector, useDispatch } from "react-redux";
 import { useParams, useNavigate } from "react-router-dom";
-// Предполагаемый путь к вашему файлу данных (data/index.js)
-import { lessons } from "../../data";
-import { HiCheck, HiRefresh, HiArrowLeft, HiArrowRight } from "react-icons/hi";
-import StudyCompletionModal from "../../components/StudyCompletionModal";
+import { markLearned } from "../../store/store";
+import {
+  HiArrowLeft,
+  HiLightBulb,
+  HiCheckCircle,
+  HiOutlineXCircle,
+  HiBookOpen,
+  HiRefresh,
+} from "react-icons/hi";
+import AudioPlayer from "../../components/AudioPlayer";
 
-// 🆕 КОНСТАНТА: Максимальное количество предложений в одной сессии (батче)
-const MAX_SESSION_SIZE = 4;
-// 🔑 КЛЮЧ: Для сохранения прогресса в localStorage
-const LOCAL_STORAGE_KEY = (lessonId) => `puzzle_completed_indices_${lessonId}`;
-
-// --- Вспомогательная функция для перемешивания (Fisher-Yates) ---
-const shuffleArray = (array) => {
+// --- Вспомогательная функция для перемешивания массива ---
+function shuffleArray(array) {
   const newArray = [...array];
   for (let i = newArray.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [newArray[i], newArray[j]] = [newArray[i], newArray[j]];
+    [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
   }
   return newArray;
-};
+}
 
-// --- КОМПОНЕНТ ---
+const TARGET_MODE = "flashcards";
+
+/**
+ * Режим тренировки: Сборка предложения из перемешанных слов.
+ */
 export default function SentencePuzzle() {
   const { lessonId } = useParams();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
 
-  // 🔑 Получение всех предложений
-  const allLessonSentences = lessons[lessonId] || [];
-  const totalSentences = allLessonSentences.length;
+  const { list } = useSelector((state) => state.words);
 
-  // --- Состояния ---
-  const [completedIndices, setCompletedIndices] = useState(new Set());
-  const [currentSentenceIndex, setCurrentSentenceIndex] = useState(0);
-  const [assembledWords, setAssembledWords] = useState([]);
-  const [shuffledWords, setShuffledWords] = useState([]);
-  const [status, setStatus] = useState(null); // null | 'correct' | 'incorrect' | 'skipped'
-  const [isPuzzleComplete, setIsPuzzleComplete] = useState(false);
-  const [sessionList, setSessionList] = useState([]);
-  const [isDataLoaded, setIsDataLoaded] = useState(false);
-
-  // 🔑 КЛЮЧ: Для принудительной перерисовки блока перемешанных слов
-  const [shuffleKey, setShuffleKey] = useState(0);
-
-  // --- Вычисляемые значения ---
-  const currentItem = sessionList[currentSentenceIndex];
-
-  // 1. Определяем, какие предложения еще не пройдены (на основе completedIndices)
-  const availableSentences = useMemo(() => {
-    return allLessonSentences
-      .map((sentence, index) => ({ ...sentence, originalIndex: index }))
-      .filter((sentence) => !completedIndices.has(sentence.originalIndex));
-  }, [allLessonSentences, completedIndices]);
-
-  const totalRemaining = availableSentences.length;
-
-  const nextBatchSize = Math.min(
-    MAX_SESSION_SIZE,
-    totalRemaining - sessionList.length
+  // Фильтруем слова, которые имеют примеры предложений (exde и exru)
+  const wordsWithExamples = useMemo(
+    () =>
+      list?.filter(
+        (w) => w.lessonId === lessonId && w.exde && w.exru
+      ) || [],
+    [list, lessonId]
   );
 
-  // 2. Извлечение и очистка целевых слов (для сравнения)
-  const targetWords = useMemo(() => {
-    if (!currentItem || !currentItem.exde) return [];
-    return currentItem.exde
-      .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")
-      .toLowerCase()
-      .split(/\s+/)
-      .filter((w) => w.length > 0);
-  }, [currentItem]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [selectedWords, setSelectedWords] = useState([]);
+  const [isCorrect, setIsCorrect] = useState(null);
+  const [showHint, setShowHint] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
 
-  // 🔑 ФУНКЦИЯ: Сохранение прогресса
-  const saveProgress = (newCompletedIndices) => {
-    try {
-      localStorage.setItem(
-        LOCAL_STORAGE_KEY(lessonId),
-        JSON.stringify(Array.from(newCompletedIndices))
-      );
-    } catch (e) {
-      console.error("Failed to save progress to localStorage:", e);
-    }
-  };
+  const currentWordData = wordsWithExamples[currentIndex];
+  
+  // 💡 УЛУЧШЕНИЕ: Создаем два массива для плиток и сравнения
+  const { correctTiles, correctSentenceForComparison } = useMemo(() => {
+    if (!currentWordData) return { correctTiles: [], correctSentenceForComparison: [] };
 
-  // 🔑 ФУНКЦИЯ: Пометка текущего предложения как завершенного
-  const markCurrentCompleted = () => {
-    if (currentItem && currentItem.originalIndex !== undefined) {
-      setCompletedIndices((prev) => {
-        const newSet = new Set(prev).add(currentItem.originalIndex);
-        saveProgress(newSet); // Сохраняем в localStorage
-        return newSet;
-      });
-    }
-  };
+    // 1. Плитки для отображения (разбиваем по пробелам, сохраняя капитализацию/пунктуацию)
+    const tiles = currentWordData.exde.split(/\s+/).filter(w => w.length > 0);
 
-  // 3. Функция для инициализации (перемешивания) слов
-  const initializeSentence = () => {
-    if (currentItem) {
-      setAssembledWords([]);
-      setStatus(null); // Сброс статуса
-
-      const distractors = currentItem?.distractors || [];
-      const sentenceWords = currentItem.exde
-        .split(/\s+/)
-        .map((w) => w.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, ""));
-      const allWordsForShuffle = [...sentenceWords, ...distractors].filter(
-        (w) => w.length > 0
-      );
-
-      // Гарантируем перемешивание (Fisher-Yates)
-      setShuffledWords(shuffleArray(allWordsForShuffle));
-
-      // 🔑 ГЕНЕРИРУЕМ НОВЫЙ КЛЮЧ, чтобы гарантировать, что React перерисует список слов
-      setShuffleKey(Math.random());
-    }
-  };
-
-  // 4. Инициализация (перезапуск) при смене предложения
-  useEffect(() => {
-    if (currentItem) {
-      initializeSentence();
-    }
-    // initializeSentence удалена из списка зависимостей (как и в оригинале)
-    // currentItem добавлен, чтобы ловить его изменение
-  }, [currentSentenceIndex, currentItem]);
-
-  // 🔑 5. ЛОГИКА ЗАГРУЗКИ НОВОГО БАТЧА
-  const loadNextBatch = () => {
-    const currentAvailableSentences = allLessonSentences
-      .map((sentence, index) => ({ ...sentence, originalIndex: index }))
-      .filter((sentence) => !completedIndices.has(sentence.originalIndex));
-
-    if (currentAvailableSentences.length === 0) {
-      setSessionList([]);
-      setIsPuzzleComplete(true);
-      return;
-    }
-
-    // Берем следующий батч из доступных предложений и перемешиваем его
-    const nextBatch = shuffleArray(currentAvailableSentences).slice(
-      0,
-      MAX_SESSION_SIZE
+    // 2. Верное предложение для сравнения (очищенное от пунктуации и в нижнем регистре)
+    const comparisonWords = tiles.map(word => 
+        word
+            .replace(/[.,/#!$%^&*;:{}=-_`~()]/g, "")
+            .toLowerCase()
     );
 
-    // Сброс состояния для новой сессии
-    setCurrentSentenceIndex(0);
-    setIsPuzzleComplete(false);
-    setStatus(null);
-    setAssembledWords([]);
-    setShuffledWords([]);
+    return {
+        correctTiles: tiles,
+        correctSentenceForComparison: comparisonWords,
+    };
+  }, [currentWordData]);
 
-    setSessionList(nextBatch);
-  };
 
-  // 🔑 6. ГЛАВНЫЙ БЛОК ЗАГРУЗКИ (localStorage И первый батч)
+  // Перемешанные "плитки" слов, которые пользователь должен выбрать
+  const [shuffledTiles, setShuffledTiles] = useState([]);
+  
+  // Эффект для инициализации/сброса при смене слова
   useEffect(() => {
-    let initialCompletedIndices = new Set();
-
-    // 1. Загрузка прогресса из localStorage
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEY(lessonId));
-      if (saved) {
-        initialCompletedIndices = new Set(JSON.parse(saved));
-        setCompletedIndices(initialCompletedIndices);
-      }
-    } catch (e) {
-      console.error("Failed to load progress from localStorage:", e);
+    if (currentWordData) {
+      // Используем correctTiles для инициализации
+      const tiles = shuffleArray(correctTiles);
+      setShuffledTiles(tiles);
+      setSelectedWords([]);
+      setIsCorrect(null);
+      setShowHint(false);
+      setShowFeedback(false);
     }
+  }, [currentWordData, correctTiles]); // Добавляем correctTiles в зависимости
 
-    // 2. Инициализация первого батча на основе ЗАГРУЖЕННОГО прогресса
-    const initialAvailableSentences = allLessonSentences
-      .map((sentence, index) => ({ ...sentence, originalIndex: index }))
-      .filter(
-        (sentence) => !initialCompletedIndices.has(sentence.originalIndex)
-      );
-
-    if (initialAvailableSentences.length > 0) {
-      // Берем батч из доступных предложений и перемешиваем его
-      const initialBatch = shuffleArray(initialAvailableSentences).slice(
-        0,
-        MAX_SESSION_SIZE
-      );
-      setSessionList(initialBatch);
-    } else if (totalSentences > 0) {
-      // Если все завершены, показываем финальный экран
-      setIsPuzzleComplete(true);
-    }
-
-    setIsDataLoaded(true); // Устанавливаем флаг, что данные загружены
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lessonId, totalSentences]);
 
   // --- Обработчики действий ---
 
-  const handleWordClick = (word, index) => {
-    if (status !== null) return;
-    setAssembledWords([...assembledWords, word]);
-    setShuffledWords(shuffledWords.filter((_, i) => i !== index));
+  const handleTileClick = (word, tileIndex) => {
+    if (isCorrect !== null) return;
+
+    setSelectedWords((prev) => [...prev, word]);
+    setShuffledTiles((prev) => prev.filter((_, index) => index !== tileIndex));
   };
 
-  const handleRemoveWord = (word, index) => {
-    if (status !== null) return;
+  const handleSelectedWordClick = (word, selectedIndex) => {
+    if (isCorrect !== null) return;
 
-    const wordToAddBack = assembledWords[index];
-    setAssembledWords(assembledWords.filter((_, i) => i !== index));
-
-    // Важно: слова должны быть снова перемешаны
-    const newShuffled = shuffleArray([...shuffledWords, wordToAddBack]);
-    setShuffledWords(newShuffled);
-    setShuffleKey(Math.random()); // Принудительный сброс для гарантии правильной перерисовки
+    setShuffledTiles((prev) => shuffleArray([...prev, word]));
+    setSelectedWords((prev) => prev.filter((_, index) => index !== selectedIndex));
   };
 
-  const checkAnswer = () => {
-    const assembledString = assembledWords
-      .map((w) => w.toLowerCase())
-      .join(" ");
-    const targetString = targetWords.join(" ");
+  const handleCheck = () => {
+    if (selectedWords.length !== correctTiles.length) return;
 
-    if (assembledString === targetString) {
-      setStatus("correct");
-      markCurrentCompleted();
-    } else {
-      setStatus("incorrect");
+    // 💡 Сравниваем очищенные версии предложений
+    const userSentenceForComparison = selectedWords
+        .map(word => word.replace(/[.,/#!$%^&*;:{}=-_`~()]/g, "").toLowerCase())
+        .join(" ");
+        
+    const correctSentenceString = correctSentenceForComparison.join(" ");
+
+    const correct = userSentenceForComparison === correctSentenceString;
+    setIsCorrect(correct);
+    setShowFeedback(true);
+
+    if (correct) {
+      dispatch(
+        markLearned({
+          word: { ...currentWordData, mode: TARGET_MODE },
+          mode: TARGET_MODE,
+        })
+      );
     }
   };
 
-  const nextSentence = () => {
-    if (currentSentenceIndex < sessionList.length - 1) {
-      setCurrentSentenceIndex((prev) => prev + 1);
+  const handleNext = () => {
+    if (currentIndex < wordsWithExamples.length - 1) {
+      setCurrentIndex((prev) => prev + 1);
     } else {
-      setIsPuzzleComplete(true);
+      alert("Урок завершен!");
+      navigate(`/lesson/${lessonId}`);
     }
   };
 
-  const skipSentence = () => {
-    setStatus("skipped");
-    markCurrentCompleted();
+  const handleReset = () => {
+    // Используем correctTiles для сброса
+    setShuffledTiles(shuffleArray(correctTiles));
+    setSelectedWords([]);
+    setIsCorrect(null);
+    setShowHint(false);
+    setShowFeedback(false);
   };
+  
+  // --- Условный рендеринг ---
 
-  const handleContinue = () => {
-    setIsPuzzleComplete(false);
-    loadNextBatch();
-  };
-
-  const handleGoBack = () => {
-    navigate(`/lesson/${lessonId}`);
-  };
-
-  const handleRestartPuzzleMode = () => {
-    // 🔑 ПЕРЕЗАПУСК ВСЕГО УРОКА
-    setCompletedIndices(new Set());
-    saveProgress(new Set());
-    setIsPuzzleComplete(false);
-
-    // Перезагрузка для гарантии мгновенного старта с первого батча
-    // Используем navigate с перезагрузкой состояния для чистого сброса
-    navigate(0);
-  };
-
-  const handleRetry = () => {
-    setIsPuzzleComplete(false);
-    initializeSentence();
-  };
-
-  // --- УСЛОВНЫЙ РЕНДЕРИНГ: Финальный экран ---
-
-  const showAnswer = status === "incorrect" || status === "skipped";
-
-  // 🔑 Заглушка, пока данные из localStorage не загружены
-  if (!isDataLoaded) {
+  if (wordsWithExamples.length === 0) {
     return (
-      <div className="flex justify-center items-center min-h-screen bg-gray-50 dark:bg-gray-900">
-        <p className="text-xl dark:text-gray-200">Загрузка данных...</p>
-      </div>
-    );
-  }
-
-  // Если все предложения урока завершены
-  if (totalRemaining === 0 && isPuzzleComplete) {
-    return (
-      <div className="p-4 sm:p-12 text-green-600 text-center text-xl font-semibold bg-white rounded-xl shadow-lg m-4 sm:m-6 dark:bg-gray-800 dark:text-green-400 dark:shadow-2xl min-h-screen flex items-center justify-center flex-col">
-        <span role="img" aria-label="party popper" className="text-3xl mr-2">
-          🎉
-        </span>{" "}
-        <h2 className="text-xl sm:text-2xl font-bold mt-2">
-          Отлично! Все **{totalSentences}** предложений урока{" "}
-          {lessonId.toUpperCase()} завершены.
+      <div className="p-12 text-center text-gray-500 bg-gray-50 min-h-screen dark:bg-gray-900">
+        <h2 className="text-xl font-bold text-gray-700 dark:text-gray-50 mb-3">
+          Нет данных для тренировки предложений
         </h2>
-        <div className="mt-6 flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4 w-full max-w-sm">
-          <button
-            onClick={handleGoBack}
-            className="w-full bg-sky-500 text-white font-bold py-3 px-4 rounded-full shadow-lg hover:bg-sky-600 transition-colors text-lg"
-          >
-            Вернуться к уроку
-          </button>
-          <button
-            onClick={handleRestartPuzzleMode}
-            className="w-full bg-gray-500 text-white font-bold py-3 px-4 rounded-full shadow-lg hover:bg-gray-600 transition-colors text-lg"
-          >
-            Начать заново
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Если батч завершен, показываем модалку (Переход к следующему батчу)
-  if (isPuzzleComplete) {
-    return (
-      <StudyCompletionModal
-        completedItemsCount={sessionList.length}
-        onRestart={handleContinue}
-        onClose={handleGoBack}
-        modeName={`Сборка предложений (Батч ${sessionList.length})`}
-        remainingCount={nextBatchSize}
-        isFullLessonComplete={totalRemaining === 0}
-        onMarkAll={handleContinue}
-      />
-    );
-  }
-
-  // Если нет текущего элемента (только при первой загрузке или пустом уроке)
-  if (!currentItem) {
-    return null;
-  }
-
-  // --- ОСНОВНОЙ РЕНДЕРИНГ ---
-  return (
-    <div className="p-4 flex flex-col items-center bg-gray-50 min-h-screen dark:bg-gray-900 transition-colors duration-300">
-      {/* Кнопка Назад */}
-      <div className="w-full max-w-xl mb-4 self-center">
+        <p className="text-gray-600 dark:text-gray-300">
+          В этом уроке нет примеров предложений (exde/exru) или слова еще не
+          загружены.
+        </p>
         <button
-          onClick={handleGoBack}
-          className="flex items-center text-sky-700 hover:text-sky-800 transition font-semibold text-sm sm:text-base dark:text-sky-400 dark:hover:text-sky-300"
+          onClick={() => navigate(`/lesson/${lessonId}`)}
+          className="mt-4 px-4 py-2 bg-sky-500 text-white rounded-xl hover:bg-sky-600 transition"
         >
-          <HiArrowLeft className="w-5 h-5 sm:w-6 sm:h-6 mr-1" />
-          <span className="hidden sm:inline">
-            К уроку {lessonId.toUpperCase()}
-          </span>
-          <span className="sm:hidden">Назад</span>
+          ← К уроку
         </button>
       </div>
+    );
+  }
 
-      {/* 🆕 Прогресс Батча */}
-      <div className="w-full max-w-xl mb-4 text-center">
-        <div className="text-xs font-medium text-gray-600 mb-1 dark:text-gray-400">
-          Батч: {currentSentenceIndex + 1} из {sessionList.length}
-          <span className="block text-xs text-gray-400 mt-1 dark:text-gray-500">
-            Осталось всего: {totalRemaining}
-          </span>
+  // --- UI Рендеринг ---
+  return (
+    <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-screen dark:bg-gray-900 transition-colors duration-300">
+      
+      {/* Шапка и навигация */}
+      <div className="w-full max-w-xl mb-6 flex justify-between items-center">
+        <button
+          onClick={() => navigate(`/lesson/${lessonId}`)}
+          className="flex items-center text-gray-700 hover:text-gray-800 transition font-semibold dark:text-gray-400 dark:hover:text-gray-300"
+        >
+          <HiArrowLeft className="w-6 h-6 mr-1" />
+          <span className="hidden sm:inline">К уроку</span>
+        </button>
+        <div className="flex items-center text-xl font-extrabold text-gray-800 dark:text-gray-50">
+          <HiBookOpen className="w-6 h-6 mr-2 text-pink-600 dark:text-pink-400" />
+          <span>Предложения: {lessonId.toUpperCase()}</span>
         </div>
-        {/* Индикатор прогресса */}
-        <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
-          <div
-            className="bg-pink-500 h-2 rounded-full transition-all duration-300"
-            style={{
-              width: `${
-                ((currentSentenceIndex + 1) / sessionList.length) * 100
-              }%`,
-            }}
-          ></div>
-        </div>
-      </div>
-
-      {/* 1. ЗАГОЛОВОК И ПРЕДЛОЖЕНИЕ */}
-      <div className="w-full max-w-xl text-center mb-4">
-        <h1 className="text-xl font-bold text-pink-600 dark:text-pink-400 mb-1">
-          Соберите предложение
-        </h1>
-        <p className="text-lg font-semibold text-gray-800 dark:text-gray-200 text-center px-2">
-          **{currentItem.exru}**
-        </p>
-      </div>
-
-      {/* 2. ПОДСКАЗКА: Ключевое слово (меньше отступ) */}
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 text-center">
-        (Ключевое слово: {currentItem.de} / {currentItem.ru})
-      </p>
-
-      {/* 3. Блок для собранного предложения */}
-      <div
-        className={`w-full max-w-xl p-3 min-h-[70px] rounded-xl mb-4 shadow-inner 
-                      ${
-                        status === "correct"
-                          ? "bg-green-100 dark:bg-green-900/50"
-                          : showAnswer
-                          ? "bg-red-100 dark:bg-red-900/50"
-                          : "bg-gray-200 dark:bg-gray-700"
-                      }`}
-      >
-        <div className="flex flex-wrap gap-2">
-          {assembledWords.map((word, index) => (
-            <button
-              key={index}
-              onClick={() => handleRemoveWord(word, index)}
-              className="bg-white text-gray-800 py-1 px-2 rounded-md shadow-md text-base sm:text-lg 
-                         hover:bg-gray-100 transition-colors dark:bg-gray-600 dark:text-gray-100 dark:hover:bg-gray-500"
-              disabled={status !== null}
-            >
-              {word}
-            </button>
-          ))}
+        <div className="text-sm font-bold text-gray-600 dark:text-gray-400">
+          {currentIndex + 1} / {wordsWithExamples.length}
         </div>
       </div>
-
-      {/* 4. Блок с перемешанными словами (включая distractors) */}
-      <div
-        key={shuffleKey} // 🔑 ГАРАНТИЯ ПЕРЕМЕШИВАНИЯ: Принудительная перерисовка при смене ключа
-        className="w-full max-w-xl p-3 rounded-xl mb-6 bg-white shadow-lg dark:bg-gray-800"
-      >
-        <div className="flex flex-wrap justify-center gap-2">
-          {shuffledWords.map((word, index) => (
-            <button
-              key={word + index}
-              onClick={() => handleWordClick(word, index)}
-              className="bg-sky-500 text-white font-medium py-2 px-3 rounded-full shadow-md 
-                         hover:bg-sky-600 transition-transform transform active:scale-95 text-base
-                         dark:bg-pink-700 dark:hover:bg-pink-600"
-              disabled={status !== null}
-            >
-              {word}
-            </button>
-          ))}
+      
+      {/* Основная карточка */}
+      <div className="w-full max-w-xl bg-white p-6 rounded-xl shadow-2xl border-t-4 border-pink-500 dark:bg-gray-800 dark:border-pink-600 dark:shadow-xl">
+        
+        {/* Слово-ключ (немецкое) */}
+        <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-100 dark:border-gray-700">
+             <div className="flex flex-col">
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Слово-ключ:</p>
+                <div className="font-bold text-xl text-gray-800 flex items-center dark:text-gray-50">
+                    {currentWordData.de}
+                    <AudioPlayer textToSpeak={currentWordData.de} lang="de-DE" />
+                </div>
+                <div className="text-gray-600 text-md dark:text-gray-300">
+                    {currentWordData.ru}
+                </div>
+             </div>
+             
+             {/* Кнопка подсказки */}
+             <button
+                onClick={() => setShowHint(true)}
+                className="flex items-center p-2 rounded-lg text-pink-700 hover:bg-pink-100 dark:text-pink-400 dark:hover:bg-pink-900 transition"
+                disabled={showHint}
+             >
+                <HiLightBulb className="w-5 h-5 mr-1" />
+                {showHint ? "Подсказка" : "Перевод"}
+             </button>
         </div>
-      </div>
 
-      {/* 5. Панель управления (Оптимизация для мобильных: flex-wrap и меньшие кнопки) */}
-      <div className="w-full max-w-xl flex flex-wrap justify-center gap-3">
-        {status === null ? (
-          <>
-            {/* 1. Сброс (Меньший размер) */}
-            <button
-              onClick={handleRetry}
-              className="flex items-center bg-gray-400 text-white font-bold py-2 px-3 rounded-full shadow-lg hover:bg-gray-500 transition-colors text-sm"
-            >
-              <HiRefresh className="w-4 h-4 mr-1" /> Сброс
-            </button>
-
-            {/* 2. Проверить (Основная кнопка) */}
-            <button
-              onClick={checkAnswer}
-              className="flex items-center bg-green-500 text-white font-bold py-2 px-5 rounded-full shadow-lg hover:bg-green-600 transition-colors text-base"
-              disabled={assembledWords.length === 0}
-            >
-              <HiCheck className="w-5 h-5 mr-1" /> Проверить
-            </button>
-
-            {/* 3. ПРОПУСТИТЬ (Меньший размер) */}
-            <button
-              onClick={skipSentence}
-              className="flex items-center bg-amber-500 text-white font-bold py-2 px-3 rounded-full shadow-lg hover:bg-amber-600 transition-colors text-sm"
-            >
-              Пропустить <HiArrowRight className="w-4 h-4 ml-1" />
-            </button>
-          </>
-        ) : status === "correct" ? (
-          // Ответ верен
-          <button
-            onClick={nextSentence}
-            className="w-full max-w-sm flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:bg-sky-600 transition-colors text-lg"
-          >
-            Отлично! Далее <HiArrowRight className="w-6 h-6 ml-2" />
-          </button>
-        ) : (
-          // Ответ неверен или пропущен (status === 'incorrect' || status === 'skipped')
-          <div className="flex flex-wrap justify-center gap-3 w-full max-w-sm">
-            <button
-              onClick={handleRetry}
-              className="flex-grow flex items-center justify-center bg-gray-400 text-white font-bold py-2 px-4 rounded-full shadow-lg hover:bg-gray-500 transition-colors text-base"
-            >
-              <HiRefresh className="w-5 h-5 mr-1" /> Повторить
-            </button>
-            <button
-              onClick={nextSentence}
-              className="flex-grow flex items-center justify-center bg-sky-500 text-white font-bold py-2 px-4 rounded-full shadow-lg hover:bg-sky-600 transition-colors text-base"
-            >
-              Продолжить <HiArrowRight className="w-5 h-5 ml-1" />
-            </button>
+        {/* Перевод (Подсказка) */}
+        {showHint && (
+          <div className="p-3 mb-4 bg-gray-100 rounded-lg dark:bg-gray-700">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
+              Русский перевод: <span className="italic">{currentWordData.exru}</span>
+            </p>
           </div>
         )}
-      </div>
-
-      {/* 6. Отображение правильного ответа после ошибки или пропуска */}
-      {showAnswer && (
-        <div
-          className={`mt-4 p-3 rounded-lg shadow w-full max-w-xl ${
-            status === "incorrect"
-              ? "bg-red-50 dark:bg-red-900"
-              : "bg-amber-50 dark:bg-amber-900"
-          }`}
-        >
-          <p className="text-sm text-gray-700 dark:text-gray-200 font-semibold mb-1">
-            {status === "incorrect"
-              ? "❌ Неверно. Правильный ответ:"
-              : "Правильный ответ (Пропущено):"}
-          </p>
-          <p className="text-base font-mono text-gray-800 dark:text-gray-100">
-            {currentItem.exde}
-          </p>
-          <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
-            ({currentItem.exru})
-          </p>
+        
+        {/* Контейнер для сбора предложения */}
+        <div className={`min-h-24 p-4 border-2 rounded-lg mb-4 
+            ${isCorrect === true ? "border-green-500 bg-green-50 dark:bg-green-900/30" : 
+              isCorrect === false ? "border-red-500 bg-red-50 dark:bg-red-900/30" : 
+              "border-gray-300 border-dashed dark:border-gray-600"}`}>
+          
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Соберите немецкое предложение:</p>
+          
+          {selectedWords.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {selectedWords.map((word, index) => (
+                <button
+                  key={index}
+                  onClick={() => handleSelectedWordClick(word, index)}
+                  disabled={isCorrect !== null}
+                  className={`px-3 py-1 rounded-lg font-semibold transition shadow-sm
+                    ${isCorrect === false && index >= correctTiles.length ? "bg-red-400 text-white" : // 💡 Можно добавить подсветку неверного слова, но для простоты оставим как было
+                      isCorrect === true ? "bg-green-500 text-white" : 
+                      "bg-sky-500 text-white hover:bg-sky-600 dark:bg-sky-600 dark:hover:bg-sky-700"}`}
+                >
+                  {word}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-400 dark:text-gray-500 italic">Начните собирать предложение...</p>
+          )}
         </div>
-      )}
+
+        {/* Плитки для выбора */}
+        <div className="mb-6">
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Выберите слова в правильном порядке:</p>
+            <div className="flex flex-wrap gap-2">
+              {shuffledTiles.map((word, index) => (
+                <button
+                  key={index}
+                  onClick={() => handleTileClick(word, index)}
+                  disabled={isCorrect !== null}
+                  className="px-3 py-1 rounded-lg border border-gray-300 bg-gray-100 text-gray-800 font-medium hover:bg-gray-200 transition dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 dark:hover:bg-gray-600 shadow-sm"
+                >
+                  {word}
+                </button>
+              ))}
+            </div>
+        </div>
+
+        {/* Фидбек и кнопки действий */}
+        {showFeedback && (
+          <div className={`p-4 rounded-lg mb-4 ${isCorrect ? 'bg-green-100 dark:bg-green-900/50' : 'bg-red-100 dark:bg-red-900/50'}`}>
+            <div className="flex items-center">
+              {isCorrect ? (
+                <HiCheckCircle className="w-6 h-6 text-green-600 mr-2 dark:text-green-400" />
+              ) : (
+                <HiOutlineXCircle className="w-6 h-6 text-red-600 mr-2 dark:text-red-400" />
+              )}
+              <span className={`font-bold ${isCorrect ? 'text-green-800 dark:text-green-200' : 'text-red-800 dark:text-red-200'}`}>
+                {isCorrect ? "Верно!" : "Неверно. Попробуйте еще раз или посмотрите правильный ответ."}
+              </span>
+            </div>
+            {!isCorrect && (
+                <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">
+                    Правильно: <span className="font-semibold italic">{correctTiles.join(" ")}</span> {/* 💡 ИСПОЛЬЗУЕМ correctTiles */}
+                </p>
+            )}
+          </div>
+        )}
+
+        <div className="flex justify-between items-center pt-4 border-t border-gray-100 dark:border-gray-700">
+          <button
+            onClick={handleReset}
+            className="flex items-center px-3 py-2 text-gray-600 rounded-lg hover:bg-gray-100 transition dark:text-gray-400 dark:hover:bg-gray-700"
+            disabled={isCorrect !== null}
+            title="Сбросить выбранные слова"
+          >
+            <HiRefresh className="w-5 h-5" />
+            <span className="ml-1 hidden sm:inline">Сбросить</span>
+          </button>
+          
+          {isCorrect === null ? (
+            <button
+              onClick={handleCheck}
+              disabled={selectedWords.length !== correctTiles.length || showFeedback}
+              className="px-6 py-3 bg-pink-500 text-white font-bold rounded-xl shadow-lg hover:bg-pink-600 transition disabled:bg-gray-400 dark:bg-pink-600 dark:hover:bg-pink-700 dark:disabled:bg-gray-600"
+            >
+              Проверить
+            </button>
+          ) : (
+            <button
+              onClick={handleNext}
+              className={`px-6 py-3 font-bold rounded-xl shadow-lg transition 
+                ${isCorrect ? "bg-green-500 hover:bg-green-600" : "bg-sky-500 hover:bg-sky-600"} text-white`}
+            >
+              {currentIndex < wordsWithExamples.length - 1 ? "Далее" : "Завершить урок"}
+            </button>
+          )}
+        </div>
+        
+      </div>
     </div>
   );
 }

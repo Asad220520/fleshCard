@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useParams, useNavigate } from "react-router-dom";
+// 💡 Убедитесь, что markLearned импортирован
 import { selectLesson, markLearned } from "../../store/store";
 import { lessons } from "../../data";
 
@@ -15,7 +16,8 @@ export default function MatchingMode() {
   const { lessonId } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { list, learned } = useSelector((state) => state.words);
+  // 💡 ИСПОЛЬЗУЕМ learnedMatching
+  const { list, learnedMatching } = useSelector((state) => state.words);
 
   const [round, setRound] = useState(0);
   const [chunk, setChunk] = useState([]); // Слова в текущем раунде
@@ -30,7 +32,11 @@ export default function MatchingMode() {
   // Список оставшихся слов (невыученных)
   const remainingList =
     list?.filter(
-      (w) => !learned.some((lw) => lw.de === w.de && lw.lessonId === w.lessonId)
+      // 💡 ФИЛЬТРУЕМ ПО learnedMatching
+      (w) =>
+        !learnedMatching.some(
+          (lw) => lw.de === w.de && lw.lessonId === w.lessonId
+        )
     ) || [];
 
   // Разделяем на чанки
@@ -70,36 +76,30 @@ export default function MatchingMode() {
     setMatched([]);
     setSelectedLeft(null);
     setIncorrectRight(null);
-  }, [round, list, learned]); // Зависимости обновят раунд при переходе или новом уроке
+  }, [round, list, learnedMatching]); // 💡 Зависимость от learnedMatching (т.к. chunks от него зависят)
 
   // --- Обработчики кликов ---
 
   const handleLeftSelect = (word) => {
-    // Если уже выбрано и кликнули по тому же, снимаем выбор
     if (selectedLeft?.de === word.de) {
       setSelectedLeft(null);
     } else {
       setSelectedLeft(word);
-      setIncorrectRight(null); // Сбрасываем неверный выбор при новом выборе
+      setIncorrectRight(null);
     }
   };
 
   const handleRightSelect = (word) => {
-    if (!selectedLeft) return; // Ничего не выбрано слева
+    if (!selectedLeft) return; 
 
     if (word.de === selectedLeft.de) {
       // Верное совпадение
       setMatched((m) => [...m, word.de]);
       setIncorrectRight(null);
-
-      // ❌ ИЗМЕНЕНИЕ: Удалили markLearned отсюда, чтобы не прерывать раунд
-
-      // Снимаем выбор ПОСЛЕ диспатча и совпадения, чтобы избежать "прыжка"
       setSelectedLeft(null);
     } else {
       // Неверное совпадение
       setIncorrectRight(word.de);
-      // Оставляем selectedLeft активным для следующей попытки
       setTimeout(() => setIncorrectRight(null), 700);
     }
   };
@@ -111,10 +111,10 @@ export default function MatchingMode() {
   useEffect(() => {
     // Проверяем, совпали ли все слова в текущем чанке
     if (chunk.length > 0 && matched.length === chunk.length) {
-      // ✅ ИЗМЕНЕНИЕ: Помечаем слова как выученные только после завершения раунда
+      
+      // 💡 ДИСПАТЧ С mode: 'matching' ПОСЛЕ ЗАВЕРШЕНИЯ РАУНДА
       chunk.forEach((word) => {
-        // Помечаем как выученные ТОЛЬКО слова из текущего чанка
-        dispatch(markLearned({ word: word }));
+        dispatch(markLearned({ word: word, mode: "matching" }));
       });
 
       // Переход к следующему раунду с задержкой (800мс)
@@ -122,7 +122,7 @@ export default function MatchingMode() {
         setRound((r) => r + 1);
       }, 800);
     }
-  }, [matched, chunk, dispatch]); // Теперь обновление Redux происходит после завершения раунда
+  }, [matched, chunk, dispatch]);
 
   // --- UI Рендеринг ---
 
@@ -164,14 +164,14 @@ export default function MatchingMode() {
       {/* Прогресс */}
       <div className="w-full max-w-lg mb-8 bg-white p-4 rounded-xl shadow-md border border-gray-100 dark:bg-gray-800 dark:shadow-xl dark:border-gray-700">
         <h2 className="text-sm font-semibold text-gray-700 mb-2 dark:text-gray-300">
-          Прогресс: Раунд {round + 1} из {chunks.length}
+          Прогресс: Раунд {round + 1} из {chunks.length || 1}
         </h2>
 
         {/* Индикатор прогресса раунда */}
         <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
           <div
             className="bg-purple-500 h-2 rounded-full transition-all duration-300"
-            style={{ width: `${(matched.length / chunk.length) * 100}%` }}
+            style={{ width: `${(matched.length / (chunk.length || 1)) * 100}%` }}
             title={`Совпало ${matched.length} из ${chunk.length} в раунде`}
           ></div>
         </div>

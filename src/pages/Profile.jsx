@@ -10,11 +10,32 @@ import {
   HiBadgeCheck,
 } from "react-icons/hi";
 
+// --- Вспомогательная функция для объединения и уникализации ---
+const getAllUniqueLearnedWords = (state) => {
+    const allWords = [
+      ...state.learnedFlashcards,
+      ...state.learnedMatching,
+      ...state.learnedQuiz,
+      ...state.learnedWriting,
+    ];
+    
+    // Используем Map для хранения уникальных слов по ключу (de + lessonId)
+    const uniqueWordsMap = new Map();
+    
+    allWords.forEach((word) => {
+      const key = `${word.de}-${word.lessonId}`;
+      if (!uniqueWordsMap.has(key)) {
+        uniqueWordsMap.set(key, word);
+      }
+    });
+
+    return Array.from(uniqueWordsMap.values());
+};
+
 export default function Profile() {
   // --- 1. Получение данных из Redux ---
-  const { learned } = useSelector((state) => state.words);
-  // Массив 'list' больше не нужен для общего расчета,
-  // так как мы используем 'lessons' из data.js
+  // 💡 ОБНОВЛЕНИЕ: Получаем весь стейт words для объединения
+  const wordsState = useSelector((state) => state.words); 
 
   // Статические (заглушечные) данные
   const username = "Ученик_Германский";
@@ -22,40 +43,51 @@ export default function Profile() {
 
   // --- 2. Вычисление реальной статистики (с использованием useMemo) ---
 
-  const totalWordsLearned = learned.length;
-
-  // ✅ КОРРЕКТНЫЙ РАСЧЕТ ЗАВЕРШЕННЫХ УРОКОВ
-  const { lessonsCompleted } = useMemo(() => {
+  // 💡 ОБНОВЛЕНИЕ: Расчет всех метрик теперь зависит от wordsState
+  const { totalWordsLearned, lessonsCompleted, masteryLevel } = useMemo(() => {
+    
+    // 1. ОБЪЕДИНЯЕМ ВСЕ ВЫУЧЕННЫЕ СЛОВА
+    const uniqueLearned = getAllUniqueLearnedWords(wordsState);
+    const calculatedTotalWordsLearned = uniqueLearned.length;
+    
+    // 2. РАСЧЕТ ЗАВЕРШЕННЫХ УРОКОВ
     let fullyCompletedCount = 0;
 
-    // 1. ИТЕРИРУЕМСЯ ПО ВСЕМ УРОКАМ, ОПРЕДЕЛЕННЫМ В data.js
+    // Группируем выученные слова по lessonId
+    const learnedByLesson = uniqueLearned.reduce((acc, word) => {
+        acc[word.lessonId] = (acc[word.lessonId] || 0) + 1;
+        return acc;
+    }, {});
+
+
+    // ИТЕРИРУЕМСЯ ПО ВСЕМУ СПИСКУ УРОКОВ
     lessonsList.forEach((lessonId) => {
       // Общее количество слов в уроке (из data.js)
       const totalWords = lessons[lessonId] ? lessons[lessonId].length : 0;
 
-      // Выученные слова из этого урока (из Redux learned)
-      const learnedInLesson = learned.filter(
-        (w) => w.lessonId === lessonId
-      ).length;
+      // Выученные слова из этого урока (из объединенного списка)
+      const learnedInLesson = learnedByLesson[lessonId] || 0;
 
-      // Урок завершен
+      // Урок завершен (выучены все слова урока хотя бы в одном режиме)
       if (totalWords > 0 && totalWords === learnedInLesson) {
         fullyCompletedCount++;
       }
     });
+    
+    // 3. РАСЧЕТ УРОВНЯ МАСТЕРСТВА
+    let calculatedMasteryLevel;
+    if (calculatedTotalWordsLearned < 50) calculatedMasteryLevel = "Начинающий A1";
+    else if (calculatedTotalWordsLearned < 200) calculatedMasteryLevel = "Начинающий A2";
+    else if (calculatedTotalWordsLearned < 500) calculatedMasteryLevel = "Средний B1";
+    else calculatedMasteryLevel = "Продвинутый B2+";
+
 
     return {
+      totalWordsLearned: calculatedTotalWordsLearned,
       lessonsCompleted: fullyCompletedCount,
+      masteryLevel: calculatedMasteryLevel,
     };
-  }, [learned]); // Зависимость только от learned, так как lessonsList/lessons статичны
-
-  // Уровень (динамическое определение на основе прогресса)
-  const masteryLevel = useMemo(() => {
-    if (totalWordsLearned < 50) return "Начинающий A1";
-    if (totalWordsLearned < 200) return "Начинающий A2";
-    if (totalWordsLearned < 500) return "Средний B1";
-    return "Продвинутый B2+";
-  }, [totalWordsLearned]);
+  }, [wordsState]); // Зависимость от всего стейта wordsState
 
   // --- 3. Объект данных для рендеринга ---
   const userData = {

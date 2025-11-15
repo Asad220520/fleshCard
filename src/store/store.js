@@ -1,14 +1,29 @@
 import { configureStore, createSlice } from "@reduxjs/toolkit";
 
-// Загружаем выученные слова из localStorage (если есть)
-const savedLearned = JSON.parse(localStorage.getItem("learnedWords") || "[]");
+// Загружаем выученные слова из localStorage (если есть) по режимам
+const savedLearnedFlashcards = JSON.parse(
+  localStorage.getItem("learnedFlashcards") || "[]"
+);
+const savedLearnedMatching = JSON.parse(
+  localStorage.getItem("learnedMatching") || "[]"
+);
+const savedLearnedQuiz = JSON.parse(
+  localStorage.getItem("learnedQuiz") || "[]"
+);
+const savedLearnedWriting = JSON.parse(
+  localStorage.getItem("learnedWriting") || "[]"
+);
 
 const wordsSlice = createSlice({
   name: "words",
   initialState: {
     list: [],
     index: 0,
-    learned: savedLearned, // { de, ru, lessonId, exde, exru, ... }
+    // 💡 РАЗДЕЛЁННЫЙ ПРОГРЕСС
+    learnedFlashcards: savedLearnedFlashcards,
+    learnedMatching: savedLearnedMatching,
+    learnedQuiz: savedLearnedQuiz,
+    learnedWriting: savedLearnedWriting,
     currentLessonId: null,
   },
   reducers: {
@@ -23,24 +38,98 @@ const wordsSlice = createSlice({
       }
     },
 
-    removeLearned: (state, action) => {
-      const { de, lessonId: passedLessonId } = action.payload;
+    // 💡 ОБНОВЛЁННЫЙ markLearned: Принимает word и mode
+    markLearned: (state, action) => {
+      const { word, mode } = action.payload; // mode: 'flashcards', 'matching', 'quiz', 'writing'
 
-      const targetLessonId = passedLessonId || state.currentLessonId;
-
-      if (!de || !targetLessonId) {
+      if (!word || !word.de || !word.lessonId || !mode) {
         console.warn(
-          "Невозможно удалить слово: отсутствует DE или LessonId.",
+          "Ошибка markLearned: Некорректный формат payload.",
           action.payload
         );
         return;
       }
 
-      state.learned = state.learned.filter(
+      let targetState;
+      let targetKey;
+
+      switch (mode) {
+        case "flashcards":
+          targetState = state.learnedFlashcards;
+          targetKey = "learnedFlashcards";
+          break;
+        case "matching":
+          targetState = state.learnedMatching;
+          targetKey = "learnedMatching";
+          break;
+        case "quiz":
+          targetState = state.learnedQuiz;
+          targetKey = "learnedQuiz";
+          break;
+        case "writing":
+          targetState = state.learnedWriting;
+          targetKey = "learnedWriting";
+          break;
+        default:
+          console.error("Неизвестный режим markLearned:", mode);
+          return;
+      }
+
+      // Проверяем, что слова с таким DE и lessonId еще нет в целевом массиве
+      if (
+        !targetState.some(
+          (w) => w.de === word.de && w.lessonId === word.lessonId
+        )
+      ) {
+        // СОХРАНЯЕМ ВСЕ ПОЛЯ
+        targetState.push({ ...word });
+        localStorage.setItem(targetKey, JSON.stringify(targetState));
+      }
+    },
+
+    removeLearned: (state, action) => {
+      const { de, lessonId: passedLessonId, mode } = action.payload;
+
+      const targetLessonId = passedLessonId || state.currentLessonId;
+
+      if (!de || !targetLessonId || !mode) {
+        console.warn(
+          "Невозможно удалить слово: отсутствует DE, LessonId или Mode.",
+          action.payload
+        );
+        return;
+      }
+
+      let targetState;
+      let targetKey;
+
+      switch (mode) {
+        case "flashcards":
+          targetState = state.learnedFlashcards;
+          targetKey = "learnedFlashcards";
+          break;
+        case "matching":
+          targetState = state.learnedMatching;
+          targetKey = "learnedMatching";
+          break;
+        case "quiz":
+          targetState = state.learnedQuiz;
+          targetKey = "learnedQuiz";
+          break;
+        case "writing":
+          targetState = state.learnedWriting;
+          targetKey = "learnedWriting";
+          break;
+        default:
+          console.error("Неизвестный режим removeLearned:", mode);
+          return;
+      }
+
+      state[targetKey] = targetState.filter(
         (w) => !(w.de === de && w.lessonId === targetLessonId)
       );
 
-      localStorage.setItem("learnedWords", JSON.stringify(state.learned));
+      localStorage.setItem(targetKey, JSON.stringify(state[targetKey]));
     },
 
     prevCard: (state) => {
@@ -64,35 +153,17 @@ const wordsSlice = createSlice({
       state.index = savedIndex;
     },
 
-    // ✅ РЕДЮСЕР MARKLEARNED: Сохраняет все поля слова, включая exde и exru.
-    markLearned: (state, action) => {
-      const current = action.payload?.word;
-
-      if (!current || !current.de || !current.lessonId) {
-        console.warn(
-          "Ошибка markLearned: Некорректный формат слова в payload.",
-          action.payload
-        );
-        return;
-      }
-
-      const lessonId = current.lessonId;
-
-      // Проверяем, что слова с таким DE и lessonId еще нет в выученных
-      if (
-        !state.learned.some(
-          (w) => w.de === current.de && w.lessonId === lessonId
-        )
-      ) {
-        // СОХРАНЯЕМ ВСЕ ПОЛЯ
-        state.learned.push({ ...current });
-        localStorage.setItem("learnedWords", JSON.stringify(state.learned));
-      }
-    },
-
+    // 💡 ОБНОВЛЁННЫЙ resetLearned: Очищает все массивы прогресса
     resetLearned: (state) => {
-      state.learned = [];
-      localStorage.removeItem("learnedWords");
+      state.learnedFlashcards = [];
+      state.learnedMatching = [];
+      state.learnedQuiz = [];
+      state.learnedWriting = [];
+
+      localStorage.removeItem("learnedFlashcards");
+      localStorage.removeItem("learnedMatching");
+      localStorage.removeItem("learnedQuiz");
+      localStorage.removeItem("learnedWriting");
     },
     saveIndex: (state, action) => {
       state.index = action.payload;
@@ -110,7 +181,8 @@ export const {
   nextCard,
   prevCard,
   selectLesson,
-  removeLearned,
+  // ✅ ДОБАВЛЕНО: Теперь экшен-креатор доступен
+  removeLearned, 
   markLearned,
   resetLearned,
   saveIndex,

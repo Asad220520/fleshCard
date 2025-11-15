@@ -85,7 +85,7 @@ const actions = [
     description: "Соедините слово с его переводом.",
     isStudyMode: true,
   },
-  // ✅ НОВОЕ ДЕЙСТВИЕ: Составление предложений
+  // ✅ НОВЫЙ РЕЖИМ
   {
     name: "Предложения",
     path: "sentence-puzzle", // Новый путь

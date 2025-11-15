@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { useParams, useNavigate } from "react-router-dom"; // 🆕 Добавил useNavigate для кнопки "Назад" (в модальном окне или после завершения)
+import { useParams, useNavigate } from "react-router-dom";
 import { markLearned, selectLesson } from "../../store/store";
 import { lessons } from "../../data";
 // Импорт иконок
@@ -9,7 +9,7 @@ import {
   HiXCircle,
   HiLightBulb,
   HiArrowRight,
-  HiArrowLeft, // 🆕 Добавил HiArrowLeft
+  HiArrowLeft,
 } from "react-icons/hi";
 import LessonComplete from "../../components/LessonComplete";
 
@@ -24,22 +24,23 @@ function normalize(str) {
     .trim();
 }
 
-// 🆕 КОНСТАНТА: Максимальное количество слов в одной учебной сессии
+// КОНСТАНТА: Максимальное количество слов в одной учебной сессии
 const MAX_SESSION_SIZE = 10;
 
 export default function WritingMode() {
   const { lessonId } = useParams();
   const dispatch = useDispatch();
-  const navigate = useNavigate(); // 🆕 Инициализация useNavigate
-  const { list, learned } = useSelector((s) => s.words);
+  const navigate = useNavigate();
+  // 💡 ИСПОЛЬЗУЕМ learnedWriting
+  const { list, learnedWriting } = useSelector((s) => s.words);
 
   const [index, setIndex] = useState(0);
   const [input, setInput] = useState("");
   const [checkState, setCheckState] = useState(null); // 'correct', 'wrong'
   const [showHint, setShowHint] = useState(false);
-  // 🆕 Фиксированный список слов для текущей сессии
+  // Фиксированный список слов для текущей сессии
   const [sessionList, setSessionList] = useState([]);
-  // 🆕 Состояние для отслеживания завершения сессии (все слова просмотрены)
+  // Состояние для отслеживания завершения сессии (все слова просмотрены)
   const [isSessionComplete, setIsSessionComplete] = useState(false);
 
   // --- Расчет пула слов ---
@@ -47,7 +48,9 @@ export default function WritingMode() {
   // Список всех невыученных слов (весь пул)
   const allRemainingList =
     list?.filter(
-      (w) => !learned.some((lw) => lw.de === w.de && lw.lessonId === w.lessonId)
+      // 💡 ФИЛЬТРУЕМ ПО learnedWriting
+      (w) =>
+        !learnedWriting.some((lw) => lw.de === w.de && lw.lessonId === w.lessonId)
     ) || [];
 
   const word = sessionList[index];
@@ -96,8 +99,9 @@ export default function WritingMode() {
     const correct = normalize(word.de) === normalize(input);
 
     if (correct) {
-      // ✅ Отмечаем как выученное в Redux, что удалит его из allRemainingList
-      dispatch(markLearned({ word }));
+      // ✅ Отмечаем как выученное в Redux
+      // 💡 ДИСПАТЧ С mode: 'writing'
+      dispatch(markLearned({ word, mode: "writing" }));
       setCheckState("correct");
 
       // Даем пользователю увидеть "Верно!" и переходим
