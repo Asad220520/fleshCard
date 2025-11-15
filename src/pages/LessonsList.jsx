@@ -406,14 +406,6 @@ export default function LessonsList() {
       ref={targetRefs.initial}
       className="p-4 sm:p-6 min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300"
     >
-      <h1
-        className={`text-3xl font-extrabold text-center text-gray-800 mb-6 sm:mb-8 dark:text-gray-100 ${
-          isActive(targetRefs.title) ? highlightClasses : ""
-        }`}
-      >
-        Выберите урок
-      </h1>
-
       {/* Кнопка добавления урока (fixed) */}
       <Link
         ref={targetRefs.addButton}

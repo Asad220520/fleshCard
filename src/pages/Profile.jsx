@@ -12,53 +12,51 @@ import {
 
 // --- Вспомогательная функция для объединения и уникализации ---
 const getAllUniqueLearnedWords = (state) => {
-    const allWords = [
-      ...state.learnedFlashcards,
-      ...state.learnedMatching,
-      ...state.learnedQuiz,
-      ...state.learnedWriting,
-    ];
-    
-    // Используем Map для хранения уникальных слов по ключу (de + lessonId)
-    const uniqueWordsMap = new Map();
-    
-    allWords.forEach((word) => {
-      const key = `${word.de}-${word.lessonId}`;
-      if (!uniqueWordsMap.has(key)) {
-        uniqueWordsMap.set(key, word);
-      }
-    });
+  const allWords = [
+    ...state.learnedFlashcards,
+    ...state.learnedMatching,
+    ...state.learnedQuiz,
+    ...state.learnedWriting,
+  ];
 
-    return Array.from(uniqueWordsMap.values());
+  // Используем Map для хранения уникальных слов по ключу (de + lessonId)
+  const uniqueWordsMap = new Map();
+
+  allWords.forEach((word) => {
+    const key = `${word.de}-${word.lessonId}`;
+    if (!uniqueWordsMap.has(key)) {
+      uniqueWordsMap.set(key, word);
+    }
+  });
+
+  return Array.from(uniqueWordsMap.values());
 };
 
 export default function Profile() {
   // --- 1. Получение данных из Redux ---
   // 💡 ОБНОВЛЕНИЕ: Получаем весь стейт words для объединения
-  const wordsState = useSelector((state) => state.words); 
+  const wordsState = useSelector((state) => state.words);
 
   // Статические (заглушечные) данные
-  const username = "Ученик_Германский";
-  const memberSince = "Январь 2024";
+  const username = "Ученик";
+  const memberSince = "неизвестно";
 
   // --- 2. Вычисление реальной статистики (с использованием useMemo) ---
 
   // 💡 ОБНОВЛЕНИЕ: Расчет всех метрик теперь зависит от wordsState
   const { totalWordsLearned, lessonsCompleted, masteryLevel } = useMemo(() => {
-    
     // 1. ОБЪЕДИНЯЕМ ВСЕ ВЫУЧЕННЫЕ СЛОВА
     const uniqueLearned = getAllUniqueLearnedWords(wordsState);
     const calculatedTotalWordsLearned = uniqueLearned.length;
-    
+
     // 2. РАСЧЕТ ЗАВЕРШЕННЫХ УРОКОВ
     let fullyCompletedCount = 0;
 
     // Группируем выученные слова по lessonId
     const learnedByLesson = uniqueLearned.reduce((acc, word) => {
-        acc[word.lessonId] = (acc[word.lessonId] || 0) + 1;
-        return acc;
+      acc[word.lessonId] = (acc[word.lessonId] || 0) + 1;
+      return acc;
     }, {});
-
 
     // ИТЕРИРУЕМСЯ ПО ВСЕМУ СПИСКУ УРОКОВ
     lessonsList.forEach((lessonId) => {
@@ -73,14 +71,16 @@ export default function Profile() {
         fullyCompletedCount++;
       }
     });
-    
+
     // 3. РАСЧЕТ УРОВНЯ МАСТЕРСТВА
     let calculatedMasteryLevel;
-    if (calculatedTotalWordsLearned < 50) calculatedMasteryLevel = "Начинающий A1";
-    else if (calculatedTotalWordsLearned < 200) calculatedMasteryLevel = "Начинающий A2";
-    else if (calculatedTotalWordsLearned < 500) calculatedMasteryLevel = "Средний B1";
+    if (calculatedTotalWordsLearned < 50)
+      calculatedMasteryLevel = "Начинающий A1";
+    else if (calculatedTotalWordsLearned < 200)
+      calculatedMasteryLevel = "Начинающий A2";
+    else if (calculatedTotalWordsLearned < 500)
+      calculatedMasteryLevel = "Средний B1";
     else calculatedMasteryLevel = "Продвинутый B2+";
-
 
     return {
       totalWordsLearned: calculatedTotalWordsLearned,
@@ -101,13 +101,6 @@ export default function Profile() {
 
   return (
     <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-screen dark:bg-gray-900 transition-colors duration-300">
-      {/* Заголовок */}
-      <div className="w-full max-w-lg mb-8 text-center">
-        <h1 className="text-3xl font-extrabold text-gray-800 dark:text-gray-50">
-          Мой Профиль
-        </h1>
-      </div>
-
       {/* Карточка профиля */}
       <div className="w-full max-w-lg bg-white p-6 rounded-xl shadow-2xl border border-gray-100 dark:bg-gray-800 dark:border-gray-700">
         {/* Аватар и имя */}

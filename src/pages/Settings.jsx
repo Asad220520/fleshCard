@@ -1,25 +1,28 @@
 import React, { useState, useEffect, useMemo } from "react";
 // Импорт иконок для переключателя темы
-import { HiSun, HiMoon } from "react-icons/hi";
+import { HiSun, HiMoon, HiDownload } from "react-icons/hi"; // 🆕 Добавил HiDownload
 import { useTheme } from "../context/ThemeContext.jsx";
 import { HiCheck } from "react-icons/hi";
+// 🆕 Убрал импорт FaGooglePlay и FaApple, так как мы фокусируемся на PWA
 
 // 💡 Глобальные константы
 const SUPPORTED_TTS_LANGS = ["de", "en", "ko"];
 const LANG_STORAGE_KEY = "selectedTtsLang";
-// 🆕 Ключ для сохранения имени голоса
 const VOICE_STORAGE_KEY = "selectedTtsVoiceName";
+
+// ❌ Условные ссылки и функция isMobileDevice удалены, так как они не нужны для PWA инструкции.
 
 export default function Settings() {
   const { theme, toggleTheme } = useTheme();
 
   const [currentTtsLang, setCurrentTtsLang] = useState("");
-  // 🆕 Добавляем состояние для имени голоса и списка голосов
   const [currentTtsVoiceName, setCurrentTtsVoiceName] = useState("");
   const [voices, setVoices] = useState([]);
 
   const [isLangSaved, setIsLangSaved] = useState(false);
   const [isVoiceSaved, setIsVoiceSaved] = useState(false);
+
+  // ❌ Убрал isMobile
 
   // 1. Загрузка голосов
   useEffect(() => {
@@ -27,6 +30,8 @@ export default function Settings() {
     loadVoices();
     window.speechSynthesis.onvoiceschanged = loadVoices;
   }, []);
+
+  // ❌ Убрал useEffect для isMobile
 
   // 2. Загрузка языка и имени голоса при монтировании
   useEffect(() => {
@@ -93,10 +98,6 @@ export default function Settings() {
 
   return (
     <div className="p-4 max-w-lg mx-auto dark:bg-gray-900 min-h-screen">
-      <h1 className="text-3xl font-bold mb-6 text-gray-800 dark:text-gray-50">
-        Настройки
-      </h1>
-
       {/* Настройка Темы */}
       <div className="bg-white p-4 rounded-xl shadow-md flex items-center justify-between dark:bg-gray-800 mb-4">
         <span className="text-lg font-medium text-gray-700 dark:text-gray-300">
@@ -165,8 +166,8 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* 2. 🆕 Настройка Голоса (Voice) */}
-      <div className="bg-white p-4 rounded-xl shadow-md dark:bg-gray-800">
+      {/* 2. Настройка Голоса (Voice) */}
+      <div className="bg-white p-4 rounded-xl shadow-md dark:bg-gray-800 mb-4">
         <h2 className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">
           Выбор голоса TTS ({currentTtsLang.toUpperCase()})
         </h2>
@@ -222,6 +223,36 @@ export default function Settings() {
               "Сохранить"
             )}
           </button>
+        </div>
+      </div>
+
+      {/* 3. 🆕 Секция: Установить как Мобильное Приложение (PWA) */}
+      <div className="bg-white p-4 rounded-xl shadow-md dark:bg-gray-800">
+        <h2 className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-3 flex items-center">
+          <HiDownload className="w-6 h-6 mr-2 text-sky-600 dark:text-sky-400" />
+          Установить как приложение (PWA)
+        </h2>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+          Вы можете установить этот сайт на главный экран своего телефона или
+          планшета. Он будет работать как полноценное приложение!
+        </p>
+
+        <div className="p-3 bg-sky-50 border border-sky-200 rounded-lg dark:bg-gray-700 dark:border-gray-600">
+          <p className="font-bold text-sky-800 dark:text-sky-300 mb-1">
+            Инструкция:
+          </p>
+          <ol className="list-decimal list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300">
+            <li>
+              Нажмите на **иконку меню** (обычно три точки ⋮ или значок ⤴️) в
+              вашем браузере.
+            </li>
+            <li>
+              Найдите пункт **"Установить приложение"** или **"Добавить на
+              главный экран"**.
+            </li>
+            <li>Подтвердите установку.</li>
+            <li>Приложение появится среди остальных ваших приложений. 🎉</li>
+          </ol>
         </div>
       </div>
     </div>

@@ -20,7 +20,9 @@ import LessonComplete from "../../components/LessonComplete";
 
 const MAX_SESSION_SIZE = 15;
 
-// ❌ КОНСТАНТЫ И ЯЗЫК УДАЛЕНЫ
+// 💡 ВОССТАНОВЛЕННЫЕ КОНСТАНТЫ
+const LANG_STORAGE_KEY = "selectedTtsLang";
+const VOICE_STORAGE_KEY = "selectedTtsVoiceName";
 
 const flipCardStyles = {
   perspective: "1000px",
@@ -71,11 +73,14 @@ export default function FlashCardsMode() {
   const [isSessionComplete, setIsSessionComplete] = useState(false);
   const [restartCount, setRestartCount] = useState(0);
 
-  // 💡 ЧИСТАЯ ЗАГРУЗКА ЯЗЫКА: Читаем сохраненное значение
+  // 💡 ВОССТАНОВЛЕНИЕ: Чтение активного языка
   const activeLangCode = useMemo(() => {
-    // В компоненте настроек гарантировано, что будет сохранено валидное значение.
-    // Если его нет (ошибка), используем "de" как крайний запасной вариант.
-    return localStorage.getItem("selectedTtsLang") || "de";
+    return localStorage.getItem(LANG_STORAGE_KEY) || "de";
+  }, []);
+
+  // 💡 ВОССТАНОВЛЕНИЕ: Чтение сохраненного имени голоса
+  const savedVoiceName = useMemo(() => {
+    return localStorage.getItem(VOICE_STORAGE_KEY) || "";
   }, []);
 
   const [voices, setVoices] = useState([]);
@@ -87,32 +92,36 @@ export default function FlashCardsMode() {
     window.speechSynthesis.onvoiceschanged = loadVoices;
   }, []);
 
-  const getVoiceByLang = (lang) => {
-    if (!voices || voices.length === 0) return null;
-    let voice = voices.find((v) => v.lang === lang);
-    if (!voice)
-      voice = voices.find((v) => v.lang.startsWith(lang.split("-")[0]));
-    return voice || null;
-  };
-
-  // 💡 ФИЛЬТРАЦИЯ: Используем загруженный activeLangCode
-  const getWordVoices = useMemo(() => {
-    return voices.filter((v) => v.lang.startsWith(activeLangCode));
-  }, [voices, activeLangCode]);
-
-  // 💡 Сброс и установка дефолтного голоса
+  // 💡 ИСПРАВЛЕННЫЙ БЛОК: Логика поиска сохраненного голоса
   useEffect(() => {
-    if (
-      selectedWordVoice &&
-      !selectedWordVoice.lang.startsWith(activeLangCode)
-    ) {
-      setSelectedWordVoice(null);
-    }
+    if (voices.length > 0) {
+      let voiceFound = null;
 
-    if (getWordVoices.length > 0 && !selectedWordVoice) {
-      setSelectedWordVoice(getWordVoices[0]);
+      if (savedVoiceName) {
+        // 1. Ищем голос по сохраненному имени И активному языку
+        voiceFound = voices.find(
+          (v) => v.name === savedVoiceName && v.lang.startsWith(activeLangCode)
+        );
+      }
+
+      if (!voiceFound) {
+        // 2. Если не нашли, ищем первый голос для активного языка (запасной вариант)
+        const defaultVoice = voices.find((v) =>
+          v.lang.startsWith(activeLangCode)
+        );
+        voiceFound = defaultVoice || null;
+      }
+      setSelectedWordVoice(voiceFound);
     }
-  }, [getWordVoices, selectedWordVoice, activeLangCode]);
+  }, [voices, activeLangCode, savedVoiceName]);
+  // ----------------------------------------------------
+
+  // ❌ УДАЛЕНИЕ НЕНУЖНОЙ ФУНКЦИИ (была в оригинале)
+  // const getVoiceByLang = (lang) => { ... }
+
+  // ❌ УДАЛЕНИЕ НЕНУЖНЫХ ХУКОВ (были в оригинале)
+  // const getWordVoices = useMemo(() => { ... }
+  // useEffect(() => { if (selectedWordVoice && ...) { ... }
 
   const getRemainingList = useCallback(() => {
     const allLearnedWords = [
@@ -222,22 +231,32 @@ export default function FlashCardsMode() {
 
   const next = useCallback(() => {
     setFlipped(false);
+    // 🛑 ОСТАНОВКА: Отменяем озвучивание при переходе
+    window.speechSynthesis.cancel();
     if (index < sessionList.length) setIndex((i) => i + 1);
   }, [sessionList.length, index]);
 
   const prev = useCallback(() => {
     setFlipped(false);
+    // 🛑 ОСТАНОВКА: Отменяем озвучивание при переходе
+    window.speechSynthesis.cancel();
     setIndex((i) => (i - 1 >= 0 ? i - 1 : 0));
   }, []);
 
   const handleKnow = () => {
     if (current) {
+      // 🛑 ОСТАНОВКА: Отменяем озвучивание
+      window.speechSynthesis.cancel();
       dispatch(markLearned({ word: current, mode: "flashcards" }));
       next();
     }
   };
 
-  const handleFlip = () => setFlipped((f) => !f);
+  const handleFlip = () => {
+    // 🛑 ОСТАНОВКА: Отменяем озвучивание при перевороте (чтобы избежать наложения)
+    window.speechSynthesis.cancel();
+    setFlipped((f) => !f);
+  };
 
   const handleMarkAllAsLearned = useCallback(() => {
     sessionList.forEach((word) =>
@@ -248,9 +267,14 @@ export default function FlashCardsMode() {
 
   const handleCloseModal = () => handleRestartSession();
 
-  const handleGoBack = () => navigate(`/lesson/${lessonId}`);
+  const handleGoBack = () => {
+    // 🛑 ОСТАНОВКА: Отменяем озвучивание при выходе
+    window.speechSynthesis.cancel();
+    navigate(`/lesson/${lessonId}`);
+  };
 
   // 💡 Динамическое получение текста слова для отображения и озвучивания
+  // wordText будет, например, 'der Gast' или 'der Job'
   const wordText = current?.[activeLangCode] || current?.de;
 
   if (finalRemainingList.length === 0 && list && list.length > 0)
@@ -329,6 +353,7 @@ export default function FlashCardsMode() {
             <AudioPlayer
               textToSpeak={wordText}
               lang={
+                // 💡 Используем язык из голоса, если он есть, иначе активный код
                 selectedWordVoice?.lang ||
                 `${activeLangCode}-${activeLangCode.toUpperCase()}`
               }

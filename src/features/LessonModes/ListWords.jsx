@@ -79,7 +79,7 @@ export default function ListWords() {
     window.speechSynthesis.onvoiceschanged = loadVoices;
   }, []);
 
-  // 3. 💡 ПОИСК СОХРАНЕННОГО ГОЛОСА
+  // 3. 💡 ПОИСК СОХРАНЕННОГО ГОЛОСА (Логика выбора голоса)
   useEffect(() => {
     if (voices.length > 0) {
       let voiceFound = null;
@@ -258,11 +258,12 @@ export default function ListWords() {
                     <div className="min-w-0">
                       <div className="font-bold text-lg text-gray-800 flex items-center dark:text-gray-50">
                         {word.de}
-                        {/* 🆕 ОБНОВЛЕНО: Используем активный язык и голос */}
+                        {/* 🆕 СЛОВО: Используем activeLangCode, voice и стандартный rate=1.0 */}
                         <AudioPlayer
                           textToSpeak={word.de}
                           lang={activeLangCode}
                           voice={selectedWordVoice}
+                          rate={1.0} // Стандартная скорость
                         />
                       </div>
                       <div className="text-gray-600 text-sm dark:text-gray-300">
@@ -280,11 +281,12 @@ export default function ListWords() {
                   {/* Немецкое предложение */}
                   <div className="text-base text-gray-700 dark:text-gray-200 flex items-center mb-1">
                     <span className="font-bold">{word.exde || "—"}</span>
-                    {/* 🆕 ОБНОВЛЕНО: Используем активный язык и голос */}
+                    {/* 🆕 ПРЕДЛОЖЕНИЕ: Используем activeLangCode, voice и замедленный rate=0.8 */}
                     <AudioPlayer
                       textToSpeak={word.exde}
                       lang={activeLangCode}
                       voice={selectedWordVoice}
+                      rate={0.8} // Замедленная скорость для длинного текста
                     />
                   </div>
                   {/* Русское предложение */}
