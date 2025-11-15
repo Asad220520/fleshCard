@@ -10,10 +10,11 @@ import {
   HiOutlinePuzzle,
   HiOutlinePencil,
   HiOutlineClipboardList,
+  // ✅ НОВАЯ ИКОНКА для предложений
+  HiOutlineChatAlt2,
 } from "react-icons/hi";
 
 // 🆕 Безопасная карта цветов Tailwind для динамических классов
-// Эти классы ДОЛЖНЫ быть полными строками, чтобы Tailwind их включил.
 const colorClasses = {
   gray: {
     icon: "text-gray-600 dark:text-gray-400",
@@ -23,7 +24,7 @@ const colorClasses = {
   sky: {
     icon: "text-sky-600 dark:text-sky-400",
     hoverBg: "hover:bg-sky-50 dark:hover:bg-sky-900",
-    border: "border-sky-400 dark:border-sky-600",
+    border: "border-sky-400 dark:border-gray-600",
   },
   green: {
     icon: "text-green-600 dark:text-green-400",
@@ -39,6 +40,12 @@ const colorClasses = {
     icon: "text-yellow-600 dark:text-yellow-400",
     hoverBg: "hover:bg-yellow-50 dark:hover:bg-yellow-900",
     border: "border-yellow-400 dark:border-yellow-600",
+  },
+  // ✅ НОВЫЙ ЦВЕТ для Предложений
+  pink: {
+    icon: "text-pink-600 dark:text-pink-400",
+    hoverBg: "hover:bg-pink-50 dark:hover:bg-pink-900",
+    border: "border-pink-400 dark:border-pink-600",
   },
 };
 
@@ -76,6 +83,16 @@ const actions = [
     icon: HiOutlinePuzzle,
     color: "purple",
     description: "Соедините слово с его переводом.",
+    isStudyMode: true,
+  },
+  // ✅ НОВОЕ ДЕЙСТВИЕ: Составление предложений
+  {
+    name: "Предложения",
+    path: "sentence-puzzle", // Новый путь
+    icon: HiOutlineChatAlt2, // Новая иконка
+    color: "pink", // Новый цвет
+    description:
+      "Соберите предложение из предложенных слов в правильном порядке.",
     isStudyMode: true,
   },
   {

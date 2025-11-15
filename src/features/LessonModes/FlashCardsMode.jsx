@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useParams, useNavigate } from "react-router-dom";
 import { selectLesson, markLearned } from "../../store/store";
-import { lessons } from "../../data";
+import { lessons } from "../../data"; // Предполагается, что 'lessons' доступны
 import StudyCompletionModal from "../../components/StudyCompletionModal";
 
 // Импорт иконок
@@ -12,9 +12,9 @@ import {
   HiCheck,
   HiOutlineRefresh,
 } from "react-icons/hi";
-import AudioPlayer from "../../components/AudioPlayer";
+import AudioPlayer from "../../components/AudioPlayer"; // Предполагается, что 'AudioPlayer' доступен
 
-// 🆕 КОНСТАНТА: Максимальное количество слов в одной учебной сессии
+// КОНСТАНТА
 const MAX_SESSION_SIZE = 15;
 
 // Стили для 3D-переворота (Оставлены без изменений)
@@ -51,47 +51,71 @@ export default function FlashCardsMode() {
   const { lessonId } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  // list и learned читаются из Redux
   const { list, learned } = useSelector((state) => state.words);
 
   // Состояния для логики
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
-  const [sessionList, setSessionList] = useState([]); // <-- Фиксированный список слов для сессии
+  const [sessionList, setSessionList] = useState([]);
   const [isSessionComplete, setIsSessionComplete] = useState(false);
+  // НОВОЕ СОСТОЯНИЕ: Счётчик для принудительного обновления useEffect
+  const [restartCount, setRestartCount] = useState(0);
 
-  // Фильтрация невыученных слов (весь пул)
-  const remainingList =
-    list?.filter(
-      (w) => !learned.some((lw) => lw.de === w.de && lw.lessonId === w.lessonId)
-    ) || [];
+  // 1. Геттер для получения актуального списка
+  const getRemainingList = useCallback(() => {
+    return (
+      list?.filter(
+        (w) =>
+          !learned.some((lw) => lw.de === w.de && lw.lessonId === w.lessonId)
+      ) || []
+    );
+  }, [list, learned]); // Зависит от Redux-данных
 
-  // Оставшееся общее количество невыученных слов
-  const totalRemaining = remainingList.length;
+  // 🔑 ПЕРЕРАСЧЕТ remainingList и totalRemaining
+  const finalRemainingList = getRemainingList();
+  const totalRemaining = finalRemainingList.length;
 
-  const current = sessionList[index]; // <-- Текущее слово берем из фиксированного списка
+  const current = sessionList[index];
 
-  // 1. Загрузка урока
+  // 1. Загрузка урока (оставлена без изменений)
   useEffect(() => {
     if ((!list || list.length === 0) && lessons[lessonId]) {
       dispatch(selectLesson({ words: lessons[lessonId], lessonId }));
     }
   }, [list, dispatch, lessonId]);
 
-  // 2. Инициализация sessionList в начале работы компонента (ограничение батча)
+  // 🔑 handleRestartSession теперь увеличивает restartCount
+  const handleRestartSession = useCallback(() => {
+    setIsSessionComplete(false);
+    setIndex(0);
+    setFlipped(false);
+
+    // КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Увеличиваем счетчик для принудительного перезапуска useEffect
+    setRestartCount((prev) => prev + 1);
+
+    // Очищаем sessionList, чтобы useEffect ниже сработал и заполнил его
+    setSessionList([]);
+  }, []);
+
+  // ✅ НОВАЯ ЛОГИКА: Инициализация sessionList зависит от restartCount
   useEffect(() => {
-    // Инициализируем sessionList, беря только MAX_SESSION_SIZE слов
-    if (remainingList.length > 0 && sessionList.length === 0) {
-      // Берем батч из первых MAX_SESSION_SIZE невыученных слов
-      const initialBatch = remainingList.slice(0, MAX_SESSION_SIZE);
+    // 1. Используем геттер для получения АКТУАЛЬНОГО списка
+    const actualRemainingList = getRemainingList();
+
+    // Логика загрузки батча
+    if (actualRemainingList.length > 0) {
+      // Берем батч из актуального списка
+      const initialBatch = actualRemainingList.slice(0, MAX_SESSION_SIZE);
       setSessionList(initialBatch);
     }
-  }, [remainingList, sessionList.length]);
+  }, [getRemainingList, restartCount]); // 👈 НОВАЯ КРИТИЧЕСКАЯ ЗАВИСИМОСТЬ!
 
-  // 3. Проверка завершения сессии (теперь только по sessionList)
+  // 3. Проверка завершения сессии (оставлена без изменений)
   useEffect(() => {
     if (sessionList.length > 0 && index >= sessionList.length) {
       setIsSessionComplete(true);
-      setIndex(0); // Сброс индекса для модального окна/повтора
+      setIndex(0);
       setFlipped(false);
     }
   }, [index, sessionList.length]);
@@ -110,10 +134,10 @@ export default function FlashCardsMode() {
     setIndex((i) => (i - 1 >= 0 ? i - 1 : sessionList.length - 1));
   }, [sessionList.length]);
 
-  // !!! КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Убираем markLearned, просто переходим к следующему слову
+  // КНОПКА "Я знаю это слово"
   const handleKnow = () => {
     if (current) {
-      // 🆕 markLearned здесь, чтобы слово сразу ушло из пула
+      // markLearned здесь, чтобы слово сразу ушло из пула
       dispatch(markLearned({ word: current }));
       next();
     }
@@ -121,36 +145,33 @@ export default function FlashCardsMode() {
 
   const handleFlip = () => setFlipped((f) => !f);
 
-  // Функции для модального окна
-  const handleRestartSession = () => {
-    setIsSessionComplete(false);
-    setIndex(0);
-    setFlipped(false);
+  // ✅ handleMarkAllAsLearned
+  const handleMarkAllAsLearned = useCallback(() => {
+    // 1. Отметить все слова
+    sessionList.forEach((word) => {
+      dispatch(markLearned({ word }));
+    });
 
-    // При перезапуске, берем новый батч из актуального remainingList
-    // remainingList уже обновлен, если пользователь отметил слова как "знаю"
-    const newBatch = remainingList.slice(0, MAX_SESSION_SIZE);
-
-    if (newBatch.length > 0) {
-      setSessionList(newBatch);
-    } else {
-      // Если remainingList пуст, то все выучено
-      setSessionList([]);
-    }
-  };
+    // 2. Сброс состояния и перезапуск.
+    handleRestartSession();
+  }, [sessionList, dispatch, handleRestartSession]);
 
   const handleCloseModal = () => {
-    // Переход на страницу урока
-    navigate(`/lesson/${lessonId}`);
+    setIsSessionComplete(false);
+    navigate(`/lesson/${lessonId}/flashcards`);
   };
 
-  // Функция для кнопки "Назад"
   const handleGoBack = () => {
-    navigate(`/lesson/${lessonId}`);
+    navigate(`/lesson/${lessonId}/flashcards`);
   };
 
-  // 1. Если все слова из remainingList уже выучены
-  if (remainingList.length === 0 && list && list.length > 0)
+  // 1. Финальное сообщение (если finalRemainingList.length === 0)
+  if (
+    finalRemainingList.length === 0 &&
+    list &&
+    list.length > 0 &&
+    !isSessionComplete
+  )
     return (
       <div className="p-12 text-green-600 text-center text-xl font-semibold bg-white rounded-xl shadow-lg m-6 dark:bg-gray-800 dark:text-green-400 dark:shadow-2xl">
         <span role="img" aria-label="party popper" className="text-3xl">
@@ -162,34 +183,20 @@ export default function FlashCardsMode() {
 
   // 2. Если сессия завершена, показываем модальное окно
   if (isSessionComplete) {
-    // Если после просмотра батча невыученных слов не осталось, показываем финальное сообщение
-    // ⚠️ Примечание: totalRemaining нужно пересчитать после сессии
-    if (totalRemaining === 0) {
-      return (
-        <div className="p-12 text-green-600 text-center text-xl font-semibold bg-white rounded-xl shadow-lg m-6 dark:bg-gray-800 dark:text-green-400 dark:shadow-2xl">
-          <span role="img" aria-label="party popper" className="text-3xl">
-            🎉
-          </span>{" "}
-          Отлично! Все слова этого урока выучены.
-        </div>
-      );
-    }
-
     return (
       <StudyCompletionModal
         wordsToLearn={sessionList}
         onRestart={handleRestartSession}
         onClose={handleCloseModal}
+        onMarkAll={handleMarkAllAsLearned}
         modeName={`Флеш-карты (Батч ${MAX_SESSION_SIZE})`}
-        remainingCount={totalRemaining}
       />
     );
   }
 
-  // 3. Если нет текущего слова (загрузка или пустой sessionList)
-  if (!current) return null;
+  // 3. Основной рендеринг
+  if (!current) return null; // Если current пуст после сброса
 
-  // Основной рендеринг
   return (
     <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
       {/* Кнопка Назад */}

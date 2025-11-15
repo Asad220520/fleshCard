@@ -18,6 +18,7 @@ import {
 /**
  * Страница, отображающая ПОЛНЫЙ список слов для текущего урока,
  * с возможностью озвучки и отметки статуса (выучено/не выучено).
+ * Включает отображение примеров предложений (exde, exru).
  */
 export default function ListWords() {
   const { lessonId } = useParams();
@@ -42,18 +43,18 @@ export default function ListWords() {
 
   /** Переключает статус слова между "выучено" и "не выучено". */
   const handleToggleLearned = (word, isLearned) => {
-    // Создаем чистый объект слова (на всякий случай)
+    // ✅ ИСПРАВЛЕНИЕ: Передаем ПОЛНЫЙ объект слова, чтобы сохранить exde и exru в Redux.
     const wordData = {
-      de: word.de,
-      ru: word.ru,
-      lessonId: word.lessonId,
+      ...word, // Копируем все поля (de, ru, exde, exru, lessonId и т.д.)
     };
 
     if (isLearned) {
-      // Отмечаем как невыученное (удаляем из learned)
+      // Отмечаем как невыученное (удаляем из learned).
+      // removeLearned ожидает {de, lessonId}, что есть в wordData.
       dispatch(removeLearned(wordData));
     } else {
-      // Отмечаем как выученное (добавляем в learned)
+      // Отмечаем как выученное (добавляем в learned).
+      // markLearned ожидает { word: wordData }
       dispatch(markLearned({ word: wordData }));
     }
   };
@@ -121,55 +122,82 @@ export default function ListWords() {
       </p>
 
       {/* Список слов */}
-      <div className="grid grid-cols-1 gap-3 w-full max-w-lg">
+      <div className="grid grid-cols-1 gap-4 w-full max-w-lg">
         {words.map((word) => {
           // Определяем, выучено ли слово
           const isLearned = learned.some(
+            // Проверка должна быть по de и lessonId (как и в Redux)
             (w) => w.de === word.de && w.lessonId === word.lessonId
           );
 
           return (
             <div
               key={`${word.de}-${word.lessonId}`}
-              className={`p-4 rounded-xl shadow-md flex justify-between items-center transition duration-150 border-2 ${
+              className={`p-4 rounded-xl shadow-md flex justify-between items-start transition duration-150 border-2 ${
                 isLearned
                   ? "bg-green-50 border-green-500 hover:shadow-lg dark:bg-green-900 dark:border-green-600 dark:shadow-xl"
                   : "bg-white border-gray-200 hover:border-sky-300 dark:bg-gray-800 dark:border-gray-700 dark:hover:border-sky-500 dark:shadow-xl"
               }`}
             >
-              <div className="flex items-center space-x-3">
-                {/* Статус слова */}
-                {isLearned ? (
-                  <HiCheckCircle
-                    className="w-6 h-6 text-green-500 dark:text-green-400"
-                    title="Выучено"
-                  />
-                ) : (
-                  <HiEyeOff
-                    className="w-6 h-6 text-gray-400 dark:text-gray-500"
-                    title="Не выучено"
-                  />
-                )}
+              <div className="flex-1 min-w-0 pr-4">
+                {/* 1. Основные слова (DE / RU) и статус */}
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center space-x-3">
+                    {/* Статус слова */}
+                    {isLearned ? (
+                      <HiCheckCircle
+                        className="w-6 h-6 text-green-500 flex-shrink-0 dark:text-green-400"
+                        title="Выучено"
+                      />
+                    ) : (
+                      <HiEyeOff
+                        className="w-6 h-6 text-gray-400 flex-shrink-0 dark:text-gray-500"
+                        title="Не выучено"
+                      />
+                    )}
 
-                {/* Слова и компонент Аудио */}
-                <div>
-                  <div className="font-bold text-lg text-gray-800 flex items-center dark:text-gray-50">
-                    {word.de}
-                    <AudioPlayer textToSpeak={word.de} lang="de-DE" />
+                    {/* Слова и компонент Аудио */}
+                    <div className="min-w-0">
+                      <div className="font-bold text-lg text-gray-800 flex items-center dark:text-gray-50">
+                        {word.de}
+                        <AudioPlayer textToSpeak={word.de} lang="de-DE" />
+                      </div>
+                      <div className="text-gray-600 text-sm dark:text-gray-300">
+                        {word.ru}
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-gray-600 text-sm dark:text-gray-300">
+                  {/* Перевод */}
+                  <span className="font-semibold text-lg text-sky-700 dark:text-sky-400">
                     {word.ru}
+                  </span>
+                </div>
+
+                {/* 2. ✅ НОВЫЙ БЛОК: Предложения (exde / exru) */}
+                <div className="mt-3 pt-2 border-t border-gray-100 dark:border-gray-700">
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    Пример:
+                  </p>
+                  {/* Немецкое предложение */}
+                  <div className="text-base text-gray-700 dark:text-gray-200 flex items-center mb-1">
+                    **{word.exde || "—"}**
+                    {/* Аудиоплеер для предложения */}
+                    <AudioPlayer textToSpeak={word.exde} lang="de-DE" />
+                  </div>
+                  {/* Русское предложение */}
+                  <div className="text-sm text-gray-500 dark:text-gray-400 italic">
+                    {word.exru || "—"}
                   </div>
                 </div>
               </div>
 
-              {/* Кнопка "Отметить статус" */}
+              {/* Кнопка "Отметить статус" (Вынесена вправо) */}
               <button
                 onClick={(e) => {
                   e.stopPropagation(); // Предотвращаем всплытие
                   handleToggleLearned(word, isLearned);
                 }}
-                className={`p-2 rounded-full transition ${
+                className={`p-3 rounded-full transition flex-shrink-0 self-center ml-2 ${
                   isLearned
                     ? "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-700 dark:text-green-200 dark:hover:bg-green-600"
                     : "bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-700 dark:text-sky-200 dark:hover:bg-sky-600"
@@ -181,9 +209,9 @@ export default function ListWords() {
                 }
               >
                 {isLearned ? (
-                  <HiEyeOff className="w-5 h-5" />
+                  <HiEyeOff className="w-6 h-6" />
                 ) : (
-                  <HiOutlineCheckCircle className="w-5 h-5" />
+                  <HiOutlineCheckCircle className="w-6 h-6" />
                 )}
               </button>
             </div>

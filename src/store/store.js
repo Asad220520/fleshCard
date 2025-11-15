@@ -8,7 +8,7 @@ const wordsSlice = createSlice({
   initialState: {
     list: [],
     index: 0,
-    learned: savedLearned, // { de, ru, lessonId }
+    learned: savedLearned, // { de, ru, lessonId, exde, exru, ... }
     currentLessonId: null,
   },
   reducers: {
@@ -23,21 +23,17 @@ const wordsSlice = createSlice({
       }
     },
 
-    // ✅ ИСПРАВЛЕННЫЙ РЕДЮСЕР removeLearned
-    // payload должен содержать { de, lessonId: string }
-    // Если lessonId не передан, используется state.currentLessonId.
     removeLearned: (state, action) => {
       const { de, lessonId: passedLessonId } = action.payload;
 
       const targetLessonId = passedLessonId || state.currentLessonId;
 
       if (!de || !targetLessonId) {
-        // Логируем ошибку, чтобы знать, что что-то пошло не так
         console.warn(
           "Невозможно удалить слово: отсутствует DE или LessonId.",
           action.payload
         );
-        return; // Выходим
+        return;
       }
 
       state.learned = state.learned.filter(
@@ -67,19 +63,33 @@ const wordsSlice = createSlice({
       );
       state.index = savedIndex;
     },
+
+    // ✅ РЕДЮСЕР MARKLEARNED: Сохраняет все поля слова, включая exde и exru.
     markLearned: (state, action) => {
-      const current = action.payload?.word || state.list[state.index];
-      if (!current) return;
-      const lessonId = current.lessonId || state.currentLessonId;
+      const current = action.payload?.word;
+
+      if (!current || !current.de || !current.lessonId) {
+        console.warn(
+          "Ошибка markLearned: Некорректный формат слова в payload.",
+          action.payload
+        );
+        return;
+      }
+
+      const lessonId = current.lessonId;
+
+      // Проверяем, что слова с таким DE и lessonId еще нет в выученных
       if (
         !state.learned.some(
           (w) => w.de === current.de && w.lessonId === lessonId
         )
       ) {
-        state.learned.push({ ...current, lessonId });
+        // СОХРАНЯЕМ ВСЕ ПОЛЯ
+        state.learned.push({ ...current });
         localStorage.setItem("learnedWords", JSON.stringify(state.learned));
       }
     },
+
     resetLearned: (state) => {
       state.learned = [];
       localStorage.removeItem("learnedWords");

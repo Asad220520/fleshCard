@@ -20,6 +20,7 @@ import ListWords from "./features/LessonModes/ListWords";
 import { useTheme } from "./context/ThemeContext.jsx";
 import Settings from "./pages/Settings.jsx";
 import Profile from "./pages/Profile.jsx";
+import SentencePuzzle from "./features/LessonModes/SentencePuzzle.jsx";
 
 export default function App() {
   // Хук useTheme остается, но его значение 'theme' больше не нужно для добавления класса 'dark' к этому div.
@@ -62,6 +63,10 @@ export default function App() {
                 element={<WritingMode />}
               />
               <Route path="/lesson/:lessonId/words" element={<ListWords />} />
+              <Route
+                path="/lesson/:lessonId/sentence-puzzle"
+                element={<SentencePuzzle />}
+              />
             </Routes>
           </main>
 
