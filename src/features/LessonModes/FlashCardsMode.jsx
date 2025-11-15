@@ -20,6 +20,8 @@ import LessonComplete from "../../components/LessonComplete";
 
 const MAX_SESSION_SIZE = 15;
 
+// ❌ КОНСТАНТЫ И ЯЗЫК УДАЛЕНЫ
+
 const flipCardStyles = {
   perspective: "1000px",
   width: "100%",
@@ -54,7 +56,6 @@ export default function FlashCardsMode() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  // Получаем ВСЕ массивы прогресса
   const {
     list,
     learnedFlashcards,
@@ -67,13 +68,53 @@ export default function FlashCardsMode() {
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [sessionList, setSessionList] = useState([]);
-  const [isSessionComplete, setIsSessionComplete] = useState(false); // Флаг для модального окна
-  const [restartCount, setRestartCount] = useState(0); // Используется для принудительного перезапуска батча
+  const [isSessionComplete, setIsSessionComplete] = useState(false);
+  const [restartCount, setRestartCount] = useState(0);
 
-  // --- Расчет пула слов (Объединенная фильтрация) ---
+  // 💡 ЧИСТАЯ ЗАГРУЗКА ЯЗЫКА: Читаем сохраненное значение
+  const activeLangCode = useMemo(() => {
+    // В компоненте настроек гарантировано, что будет сохранено валидное значение.
+    // Если его нет (ошибка), используем "de" как крайний запасной вариант.
+    return localStorage.getItem("selectedTtsLang") || "de";
+  }, []);
+
+  const [voices, setVoices] = useState([]);
+  const [selectedWordVoice, setSelectedWordVoice] = useState(null);
+
+  useEffect(() => {
+    const loadVoices = () => setVoices(window.speechSynthesis.getVoices());
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+  }, []);
+
+  const getVoiceByLang = (lang) => {
+    if (!voices || voices.length === 0) return null;
+    let voice = voices.find((v) => v.lang === lang);
+    if (!voice)
+      voice = voices.find((v) => v.lang.startsWith(lang.split("-")[0]));
+    return voice || null;
+  };
+
+  // 💡 ФИЛЬТРАЦИЯ: Используем загруженный activeLangCode
+  const getWordVoices = useMemo(() => {
+    return voices.filter((v) => v.lang.startsWith(activeLangCode));
+  }, [voices, activeLangCode]);
+
+  // 💡 Сброс и установка дефолтного голоса
+  useEffect(() => {
+    if (
+      selectedWordVoice &&
+      !selectedWordVoice.lang.startsWith(activeLangCode)
+    ) {
+      setSelectedWordVoice(null);
+    }
+
+    if (getWordVoices.length > 0 && !selectedWordVoice) {
+      setSelectedWordVoice(getWordVoices[0]);
+    }
+  }, [getWordVoices, selectedWordVoice, activeLangCode]);
 
   const getRemainingList = useCallback(() => {
-    // 1. Объединяем все выученные слова из всех режимов
     const allLearnedWords = [
       ...learnedFlashcards,
       ...learnedMatching,
@@ -81,12 +122,9 @@ export default function FlashCardsMode() {
       ...learnedWriting,
       ...(learnedSentencePuzzle || []),
     ];
-
-    // 2. Создаем Set уникальных выученных ключей для быстрого поиска
     const learnedSet = new Set();
     allLearnedWords.forEach((w) => learnedSet.add(`${w.de}-${w.lessonId}`));
 
-    // 3. Фильтруем list: оставляем только те слова, которых НЕТ в learnedSet
     return (
       list?.filter((word) => {
         const key = `${word.de}-${word.lessonId}`;
@@ -111,14 +149,12 @@ export default function FlashCardsMode() {
 
   const current = sessionList[index];
 
-  // 1. Загрузка урока
   useEffect(() => {
     if ((!list || list.length === 0) && lessons[lessonId]) {
       dispatch(selectLesson({ words: lessons[lessonId], lessonId }));
     }
   }, [list, dispatch, lessonId]);
 
-  // 2. Функция для загрузки или перезапуска батча
   const loadNewBatch = useCallback(() => {
     const actualRemainingList = finalRemainingList;
     if (actualRemainingList.length > 0) {
@@ -126,19 +162,15 @@ export default function FlashCardsMode() {
       setSessionList(initialBatch);
       setIndex(0);
       setFlipped(false);
-      setIsSessionComplete(false); // Убедиться, что модальное окно скрыто
+      setIsSessionComplete(false);
     } else if (list && list.length > 0) {
-      // Если список пуст, но слова в уроке есть (значит, все выучены)
-      setIsSessionComplete(true); // Переходим к LessonComplete (см. ЭКРАН 1)
+      setIsSessionComplete(true);
       setSessionList([]);
     }
   }, [finalRemainingList, list]);
 
-  // 3. Инициализация/Перезапуск батча при изменении пула слов или принудительном сбросе
   useEffect(() => {
-    // 💡 ИСПРАВЛЕНО: Условие для загрузки нового батча, если пул изменился
     if (finalRemainingList.length > 0) {
-      // Сравниваем ключи текущего батча с тем, что должно быть в новом батче
       const currentBatchKeys = sessionList
         .map((w) => `${w.de}-${w.lessonId}`)
         .join(",");
@@ -155,7 +187,6 @@ export default function FlashCardsMode() {
         loadNewBatch();
       }
     }
-    // Сбрасываем restartCount после использования
     setRestartCount(0);
   }, [
     finalRemainingList,
@@ -165,24 +196,19 @@ export default function FlashCardsMode() {
     sessionList.length,
   ]);
 
-  // 4. Проверка завершения батча
   useEffect(() => {
     if (sessionList.length > 0 && index >= sessionList.length) {
-      setIndex(sessionList.length - 1); // Остаемся на последней карточке
+      setIndex(sessionList.length - 1);
       setFlipped(false);
-
-      // 💡 ИСПРАВЛЕНО: Если мы дошли до конца sessionList, показываем модальное окно
       setIsSessionComplete(true);
     }
   }, [index, sessionList.length]);
 
   const handleRestartSession = useCallback(() => {
-    // 💡 ИСПРАВЛЕНО: Вместо сброса состояний, просто вызываем загрузку нового батча
     loadNewBatch();
-    setRestartCount((prev) => prev + 1); // Принудительный сброс для активации useEffect
+    setRestartCount((prev) => prev + 1);
   }, [loadNewBatch]);
 
-  // Функция "Повторить Урок" очищает прогресс ТОЛЬКО ИЗ ТЕКУЩЕГО режима ('flashcards').
   const handleRepeatLesson = useCallback(() => {
     if (
       window.confirm(
@@ -196,9 +222,7 @@ export default function FlashCardsMode() {
 
   const next = useCallback(() => {
     setFlipped(false);
-    if (index < sessionList.length) {
-      setIndex((i) => i + 1);
-    }
+    if (index < sessionList.length) setIndex((i) => i + 1);
   }, [sessionList.length, index]);
 
   const prev = useCallback(() => {
@@ -208,7 +232,6 @@ export default function FlashCardsMode() {
 
   const handleKnow = () => {
     if (current) {
-      // Отмечаем как выученное ТОЛЬКО в режиме 'flashcards'
       dispatch(markLearned({ word: current, mode: "flashcards" }));
       next();
     }
@@ -217,23 +240,19 @@ export default function FlashCardsMode() {
   const handleFlip = () => setFlipped((f) => !f);
 
   const handleMarkAllAsLearned = useCallback(() => {
-    sessionList.forEach((word) => {
-      // Отмечаем весь батч как выученный ТОЛЬКО в режиме 'flashcards'
-      dispatch(markLearned({ word, mode: "flashcards" }));
-    });
-    handleRestartSession(); // Запускаем следующий батч
+    sessionList.forEach((word) =>
+      dispatch(markLearned({ word, mode: "flashcards" }))
+    );
+    handleRestartSession();
   }, [sessionList, dispatch, handleRestartSession]);
 
-  const handleCloseModal = () => {
-    // При закрытии модального окна вызываем перезапуск для загрузки следующего батча
-    handleRestartSession();
-  };
+  const handleCloseModal = () => handleRestartSession();
 
-  const handleGoBack = () => {
-    navigate(`/lesson/${lessonId}`);
-  };
+  const handleGoBack = () => navigate(`/lesson/${lessonId}`);
 
-  // ЭКРАН 1: Урок полностью завершен (все слова выучены во всех режимах)
+  // 💡 Динамическое получение текста слова для отображения и озвучивания
+  const wordText = current?.[activeLangCode] || current?.de;
+
   if (finalRemainingList.length === 0 && list && list.length > 0)
     return (
       <LessonComplete
@@ -243,17 +262,14 @@ export default function FlashCardsMode() {
       />
     );
 
-  // ЭКРАН 2: Завершение батча / Модальное окно
-  // Показываем, если index достиг конца sessionList
-  if (isSessionComplete) {
+  if (isSessionComplete)
     return (
       <StudyCompletionModal
-        wordsToLearn={sessionList} // Слова в завершенном батче
-        onRestart={handleRestartSession} // Запустить следующий батч
+        wordsToLearn={sessionList}
+        onRestart={handleRestartSession}
         onClose={handleCloseModal}
         onMarkAll={handleMarkAllAsLearned}
         modeName={`Флеш-карты (Батч ${MAX_SESSION_SIZE})`}
-        // Указываем, что батч завершен, но слова еще есть в пуле
         isBatchComplete={
           finalRemainingList.length > MAX_SESSION_SIZE ||
           (finalRemainingList.length > 0 &&
@@ -261,10 +277,8 @@ export default function FlashCardsMode() {
         }
       />
     );
-  }
 
-  // ЭКРАН 3: Основная тренировка
-  if (!current) return null; // Ожидание загрузки
+  if (!current) return null;
 
   return (
     <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
@@ -310,13 +324,17 @@ export default function FlashCardsMode() {
             style={flipCardFaceStyles}
             className="bg-sky-500 text-white shadow-xl flex-col"
           >
-            <span className="text-4xl font-bold mb-4">{current.de}</span>
+            <span className="text-4xl font-bold mb-4">{wordText}</span>
 
             <AudioPlayer
-              textToSpeak={current.de}
-              lang="de-DE"
+              textToSpeak={wordText}
+              lang={
+                selectedWordVoice?.lang ||
+                `${activeLangCode}-${activeLangCode.toUpperCase()}`
+              }
+              voice={selectedWordVoice}
               className="!text-white !bg-sky-600 hover:!bg-sky-700 p-3 rounded-full"
-              title={`Прослушать ${current.de}`}
+              title={`Прослушать ${wordText} (${activeLangCode.toUpperCase()})`}
             />
           </div>
 

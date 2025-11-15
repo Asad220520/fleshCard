@@ -15,15 +15,14 @@ import {
   HiOutlineRefresh,
 } from "react-icons/hi";
 import LessonComplete from "../../components/LessonComplete";
+// 🆕 ИМПОРТ: AudioPlayer для озвучивания
+import AudioPlayer from "../../components/AudioPlayer";
 
 const MAX_SESSION_SIZE = 15;
-const ALL_MODES = [
-  "flashcards",
-  "matching",
-  "quiz",
-  "writing",
-  "sentence_puzzle",
-];
+const LANG_STORAGE_KEY = "selectedTtsLang";
+const VOICE_STORAGE_KEY = "selectedTtsVoiceName";
+
+// ❌ УДАЛЕНО: ALL_MODES не используется в QuizMode
 
 export default function QuizMode() {
   const { lessonId } = useParams();
@@ -34,7 +33,7 @@ export default function QuizMode() {
     list,
     learnedFlashcards,
     learnedMatching,
-    learnedQuiz, // <-- Это единственное состояние, которое мы теперь используем для фильтрации
+    learnedQuiz, // <-- Единственное состояние, которое мы используем для фильтрации
     learnedWriting,
     learnedSentencePuzzle,
   } = useSelector((state) => state.words);
@@ -47,6 +46,41 @@ export default function QuizMode() {
   const [restartCount, setRestartCount] = useState(0);
   const [wordsToReview, setWordsToReview] = useState([]);
 
+  // 1. 💡 ЛОГИКА TTS: ЧТЕНИЕ НАСТРОЕК
+  const activeLangCode = useMemo(() => {
+    return localStorage.getItem(LANG_STORAGE_KEY) || "de";
+  }, []);
+
+  const savedVoiceName = useMemo(() => {
+    return localStorage.getItem(VOICE_STORAGE_KEY) || "";
+  }, []);
+
+  const [voices, setVoices] = useState([]);
+  const [selectedWordVoice, setSelectedWordVoice] = useState(null);
+
+  useEffect(() => {
+    const loadVoices = () => setVoices(window.speechSynthesis.getVoices());
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+  }, []);
+
+  useEffect(() => {
+    if (voices.length > 0) {
+      let voiceFound = null;
+      if (savedVoiceName) {
+        voiceFound = voices.find(
+          (v) => v.name === savedVoiceName && v.lang.startsWith(activeLangCode)
+        );
+      }
+      if (!voiceFound) {
+        const defaultVoice = voices.find((v) =>
+          v.lang.startsWith(activeLangCode)
+        );
+        voiceFound = defaultVoice || null;
+      }
+      setSelectedWordVoice(voiceFound);
+    }
+  }, [voices, activeLangCode, savedVoiceName]);
   // 🛑 ИСПРАВЛЕНИЕ: Функция для получения оставшихся слов, фильтруем ТОЛЬКО по learnedQuiz
   const getRemainingList = useCallback(() => {
     // 1. Создаем Set выученных слов ТОЛЬКО ИЗ РЕЖИМА QUIZ
@@ -128,6 +162,22 @@ export default function QuizMode() {
 
   const current = sessionList[index] || null;
 
+  // 2. 💡 ЛОГИКА TTS: АВТОМАТИЧЕСКОЕ ОЗВУЧИВАНИЕ ПРИ СМЕНЕ СЛОВА
+  useEffect(() => {
+    if (current && selectedWordVoice) {
+      try {
+        const utterance = new SpeechSynthesisUtterance(current.de);
+        utterance.lang = selectedWordVoice.lang;
+        utterance.voice = selectedWordVoice;
+        utterance.rate = 0.8; // Немного медленнее, чтобы было понятнее
+        window.speechSynthesis.speak(utterance);
+      } catch (e) {
+        console.error("TTS failed:", e);
+      }
+    }
+    // Озвучивание происходит при смене 'current' и при готовности 'selectedWordVoice'
+  }, [current, selectedWordVoice]);
+
   useEffect(() => {
     if (sessionList.length > 0 && index >= sessionList.length) {
       setIsSessionComplete(true);
@@ -159,6 +209,9 @@ export default function QuizMode() {
   const handleSelect = (opt) => {
     if (selected) return;
 
+    // 🛑 ОСТАНОВКА: Останавливаем автоматическое озвучивание при выборе ответа
+    window.speechSynthesis.cancel();
+
     setSelected(opt);
 
     if (opt.de === current.de) {
@@ -167,11 +220,15 @@ export default function QuizMode() {
       advance(1000);
     } else {
       setWordsToReview((prev) => [...prev, current]);
+      advance(1000); // Переходим дальше после показа ошибки
     }
   };
 
   const handleKnow = () => {
     if (current) {
+      // 🛑 ОСТАНОВКА: Останавливаем автоматическое озвучивание
+      window.speechSynthesis.cancel();
+
       // 💡 markLearned сработает только для learnedQuiz
       dispatch(markLearned({ word: current, mode: "quiz" }));
       advance(0);
@@ -179,11 +236,16 @@ export default function QuizMode() {
   };
 
   const handleDontKnow = () => {
+    // 🛑 ОСТАНОВКА: Останавливаем автоматическое озвучивание
+    window.speechSynthesis.cancel();
+
     setWordsToReview((prev) => [...prev, current]);
     advance(0);
   };
 
   const handleGoBack = () => {
+    // 🛑 ОСТАНОВКА: Останавливаем автоматическое озвучивание при выходе
+    window.speechSynthesis.cancel();
     navigate(`/lesson/${lessonId}`);
   };
 
@@ -198,6 +260,9 @@ export default function QuizMode() {
 
   if (isSessionComplete) {
     const nextRemaining = allRemainingList.length;
+
+    // 🛑 ОСТАНОВКА: Если сессия завершена, отменяем любые активные TTS
+    window.speechSynthesis.cancel();
 
     return (
       <div className="p-12 text-center text-gray-800 dark:text-gray-50 bg-gray-50 min-h-[50vh] dark:bg-gray-900 transition-colors duration-300 w-full max-w-lg mx-auto rounded-xl shadow-lg mt-10">
@@ -281,10 +346,18 @@ export default function QuizMode() {
       </div>
 
       <div className="w-full max-w-lg mb-8">
-        <div className="p-8 bg-sky-600 text-white rounded-2xl shadow-xl flex items-center justify-center min-h-[150px]">
+        <div className="p-8 bg-sky-600 text-white rounded-2xl shadow-xl flex items-center justify-between min-h-[150px] space-x-4">
           <span className="text-4xl font-bold tracking-wide">
             {current?.de.toUpperCase()}
           </span>
+          {/* 🆕 ДОБАВЛЕНО: Кнопка для ручного повтора озвучивания */}
+          <AudioPlayer
+            textToSpeak={current?.de}
+            lang={activeLangCode}
+            voice={selectedWordVoice}
+            className="p-3 bg-sky-500 hover:bg-sky-400 transition rounded-full flex-shrink-0"
+            title="Прослушать слово снова"
+          />
         </div>
       </div>
 

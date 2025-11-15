@@ -2,56 +2,60 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useDispatch } from "react-redux";
 import { selectLesson } from "../store/store";
-import { lessons } from "../data";
-// Импорт иконок
+import { loadLessons } from "../data/lessons-storage";
+
+// Иконки
 import {
   HiOutlineCreditCard,
   HiOutlineAcademicCap,
   HiOutlinePuzzle,
   HiOutlinePencil,
   HiOutlineClipboardList,
-  // ✅ НОВАЯ ИКОНКА для предложений
   HiOutlineChatAlt2,
 } from "react-icons/hi";
 
-// 🆕 Безопасная карта цветов Tailwind для динамических классов
+// Карта цветов Tailwind
 const colorClasses = {
   gray: {
     icon: "text-gray-600 dark:text-gray-400",
     hoverBg: "hover:bg-gray-100 dark:hover:bg-gray-700",
-    border: "border-gray-400 dark:border-gray-600",
+    // 💡 ИСПРАВЛЕНО: Цветной бордер для светлой темы и темный для темной
+    border: "border-gray-400 dark:border-gray-500",
   },
   sky: {
     icon: "text-sky-600 dark:text-sky-400",
     hoverBg: "hover:bg-sky-50 dark:hover:bg-sky-900",
-    border: "border-sky-400 dark:border-gray-600",
+    // 💡 ИСПРАВЛЕНО: Цветной бордер для светлой темы
+    border: "border-sky-400 dark:border-sky-600",
   },
   green: {
     icon: "text-green-600 dark:text-green-400",
     hoverBg: "hover:bg-green-50 dark:hover:bg-green-900",
+    // 💡 ИСПРАВЛЕНО: Цветной бордер для светлой темы
     border: "border-green-400 dark:border-green-600",
   },
   purple: {
     icon: "text-purple-600 dark:text-purple-400",
     hoverBg: "hover:bg-purple-50 dark:hover:bg-purple-900",
+    // 💡 ИСПРАВЛЕНО: Цветной бордер для светлой темы
     border: "border-purple-400 dark:border-purple-600",
   },
   yellow: {
     icon: "text-yellow-600 dark:text-yellow-400",
     hoverBg: "hover:bg-yellow-50 dark:hover:bg-yellow-900",
+    // 💡 ИСПРАВЛЕНО: Цветной бордер для светлой темы
     border: "border-yellow-400 dark:border-yellow-600",
   },
-  // ✅ НОВЫЙ ЦВЕТ для Предложений
   pink: {
     icon: "text-pink-600 dark:text-pink-400",
     hoverBg: "hover:bg-pink-50 dark:hover:bg-pink-900",
+    // ЭТОТ БЫЛ ПРАВИЛЬНЫЙ
     border: "border-pink-400 dark:border-pink-600",
   },
 };
 
-// Определяем список действий и их параметры
+// Действия урока (оставлены без изменений)
 const actions = [
-  // --- НОВОЕ: Вспомогательное действие (Список слов) ---
   {
     name: "Слова урока",
     path: "words",
@@ -60,7 +64,6 @@ const actions = [
     description: "Просмотреть полный список слов в этом уроке.",
     isStudyMode: false,
   },
-  // --- Режимы тренировки ---
   {
     name: "Флешкарты",
     path: "flashcards",
@@ -85,12 +88,11 @@ const actions = [
     description: "Соедините слово с его переводом.",
     isStudyMode: true,
   },
-  // ✅ НОВЫЙ РЕЖИМ
   {
     name: "Предложения",
-    path: "sentence-puzzle", // Новый путь
-    icon: HiOutlineChatAlt2, // Новая иконка
-    color: "pink", // Новый цвет
+    path: "sentence-puzzle",
+    icon: HiOutlineChatAlt2,
+    color: "pink",
     description:
       "Соберите предложение из предложенных слов в правильном порядке.",
     isStudyMode: true,
@@ -110,17 +112,16 @@ export default function LessonPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const [loading, setLoading] = useState(true);
+  const [lesson, setLesson] = useState(null);
 
   useEffect(() => {
-    // Проверка наличия урока в данных
-    if (lessonId && lessons[lessonId]) {
-      dispatch(selectLesson({ words: lessons[lessonId], lessonId }));
-      setLoading(false);
-    } else if (lessonId) {
-      setLoading(false);
-      // Если урок не найден, можно перенаправить пользователя
-      // navigate('/lessons');
+    // Загружаем уроки из LocalStorage
+    const allLessons = loadLessons();
+    if (lessonId && allLessons[lessonId]) {
+      setLesson(allLessons[lessonId]);
+      dispatch(selectLesson({ words: allLessons[lessonId], lessonId }));
     }
+    setLoading(false);
   }, [lessonId, dispatch]);
 
   if (loading)
@@ -130,7 +131,7 @@ export default function LessonPage() {
       </div>
     );
 
-  if (!lessons[lessonId])
+  if (!lesson)
     return (
       <div className="p-6 text-red-500 text-center dark:bg-gray-900 min-h-screen">
         Урок не найден.
@@ -142,7 +143,6 @@ export default function LessonPage() {
 
   return (
     <div className="p-4 sm:p-6 flex flex-col items-center bg-gray-50 min-h-screen dark:bg-gray-900 transition-colors duration-300">
-      {/* Заголовок урока */}
       <h1 className="text-4xl font-extrabold text-gray-800 dark:text-gray-100 mt-4 mb-3 text-center">
         {lessonId.toUpperCase()}
       </h1>
@@ -151,20 +151,11 @@ export default function LessonPage() {
       </p>
 
       <div className="w-full max-w-2xl">
-        {/* 1. Блок "Слова урока" */}
         {infoAction && (
+          // 💡 ИСПОЛЬЗУЕМ: styles.border для первой карточки
           <button
-            key={infoAction.path}
             onClick={() => navigate(`/lesson/${lessonId}/${infoAction.path}`)}
-            className={`
-              flex flex-col items-start p-5 bg-white rounded-xl shadow-lg 
-              transition duration-300 ease-in-out w-full mb-6
-              transform hover:scale-[1.01]
-              
-              // 🆕 Dark Mode и стили из карты
-              dark:bg-gray-800 dark:shadow-xl dark:border-gray-600
-              ${colorClasses.gray.hoverBg} border-b-4 ${colorClasses.gray.border}
-            `}
+            className={`flex flex-col items-start p-5 bg-white rounded-xl shadow-lg transition duration-300 ease-in-out w-full mb-6 transform hover:scale-[1.01] dark:bg-gray-800 dark:shadow-xl dark:border-gray-600 ${colorClasses.gray.hoverBg} border-b-4 ${colorClasses.gray.border}`}
           >
             <infoAction.icon
               className={`w-8 h-8 mb-2 ${colorClasses.gray.icon}`}
@@ -182,31 +173,19 @@ export default function LessonPage() {
           Режимы тренировки
         </h3>
 
-        {/* 2. Сетка режимов тренировки */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {studyActions.map((action) => {
             const styles = colorClasses[action.color] || colorClasses.gray;
-
             return (
               <button
                 key={action.path}
                 onClick={() => navigate(`/lesson/${lessonId}/${action.path}`)}
-                className={`
-                  flex flex-col items-start p-5 bg-white rounded-xl shadow-md 
-                  transition duration-300 ease-in-out
-                  transform hover:scale-[1.01] 
-                  
-                  // 🆕 Dark Mode и стили из карты
-                  dark:bg-gray-800 dark:shadow-xl dark:border-gray-600
-                  ${styles.hoverBg} border-b-4 ${styles.border}
-                `}
+                className={`flex flex-col items-start p-5 bg-white rounded-xl shadow-md transition duration-300 ease-in-out transform hover:scale-[1.01] dark:bg-gray-800 dark:shadow-xl dark:border-gray-600 ${styles.hoverBg} border-b-4 ${styles.border}`}
               >
                 <action.icon className={`w-8 h-8 mb-2 ${styles.icon}`} />
-
                 <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 text-left">
                   {action.name}
                 </h2>
-
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 text-left">
                   {action.description}
                 </p>

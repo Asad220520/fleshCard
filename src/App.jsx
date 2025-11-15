@@ -16,22 +16,16 @@ import MatchingMode from "./features/LessonModes/MatchingMode";
 import WritingMode from "./features/LessonModes/WritingMode";
 import ListWords from "./features/LessonModes/ListWords";
 
-// 🆕 Хук темы (оставляем, если он нужен для других целей, например, для условного рендеринга)
 import { useTheme } from "./context/ThemeContext.jsx";
 import Settings from "./pages/Settings.jsx";
 import Profile from "./pages/Profile.jsx";
 import SentencePuzzle from "./features/LessonModes/SentencePuzzle.jsx";
+import AddLessonPage from "./pages/AddLessonPage.jsx";
 
 export default function App() {
-  // Хук useTheme остается, но его значение 'theme' больше не нужно для добавления класса 'dark' к этому div.
-  // const { theme } = useTheme();
-
   return (
     <Provider store={store}>
       <Router>
-        {/* ✅ ИСПРАВЛЕНО: Удалили ${theme === "dark" ? "dark" : ""}. 
-            Класс 'dark' теперь находится на <html>, и Tailwind сам применяет dark:bg-gray-900.
-        */}
         <div
           className={`min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300`}
         >
@@ -42,6 +36,8 @@ export default function App() {
               <Route path="/learned" element={<LearnedWords />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/profile" element={<Profile />} />
+              <Route path="/add-lesson" element={<AddLessonPage />} />
+
               <Route
                 path="/learned/lesson/:lessonId"
                 element={<LessonWords />}

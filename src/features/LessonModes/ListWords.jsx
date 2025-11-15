@@ -19,8 +19,9 @@ import {
   HiOutlineCheckCircle,
 } from "react-icons/hi";
 
-// ⚠️ УДАЛЕНО: TARGET_MODE больше не нужен, так как ListWords работает со всеми режимами.
-// const TARGET_MODE = "flashcards";
+// 💡 КОНСТАНТЫ: Ключи для чтения глобальных настроек
+const LANG_STORAGE_KEY = "selectedTtsLang";
+const VOICE_STORAGE_KEY = "selectedTtsVoiceName";
 
 // 💡 КОНСТАНТА: Список всех режимов для удаления (при "не выучено")
 const ALL_MODES = [
@@ -53,6 +54,50 @@ export default function ListWords() {
 
   // Слова для отображения: полный список из Redux Store
   const words = list?.filter((w) => w.lessonId === lessonId) || [];
+
+  // 1. 💡 ЧТЕНИЕ АКТИВНОГО ЯЗЫКА И ИМЕНИ ГОЛОСА ИЗ LOCALSTORAGE
+  const activeLangCode = useMemo(() => {
+    // В компоненте настроек гарантировано, что будет сохранено валидное значение.
+    return localStorage.getItem(LANG_STORAGE_KEY) || "de";
+  }, []);
+
+  const savedVoiceName = useMemo(() => {
+    return localStorage.getItem(VOICE_STORAGE_KEY) || "";
+  }, []);
+
+  // 2. 💡 СОСТОЯНИЕ ГОЛОСОВ TTS
+  const [voices, setVoices] = useState([]);
+  const [selectedWordVoice, setSelectedWordVoice] = useState(null);
+
+  useEffect(() => {
+    const loadVoices = () => setVoices(window.speechSynthesis.getVoices());
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+  }, []);
+
+  // 3. 💡 ПОИСК СОХРАНЕННОГО ГОЛОСА
+  useEffect(() => {
+    if (voices.length > 0) {
+      let voiceFound = null;
+
+      if (savedVoiceName) {
+        // 1. Ищем голос по сохраненному имени и активному языку
+        voiceFound = voices.find(
+          (v) => v.name === savedVoiceName && v.lang.startsWith(activeLangCode)
+        );
+      }
+
+      if (!voiceFound) {
+        // 2. Если не нашли, ищем первый голос для активного языка (запасной вариант)
+        const defaultVoice = voices.find((v) =>
+          v.lang.startsWith(activeLangCode)
+        );
+        voiceFound = defaultVoice || null;
+      }
+
+      setSelectedWordVoice(voiceFound);
+    }
+  }, [voices, activeLangCode, savedVoiceName]);
 
   // 💡 ВЫЧИСЛЯЕМ УНИВЕРСАЛЬНЫЙ НАБОР ВЫУЧЕННЫХ СЛОВ (Set)
   const learnedSet = useMemo(() => {
@@ -173,9 +218,6 @@ export default function ListWords() {
           const wordKey = `${word.de}-${word.lessonId}`;
           const isLearnedInAnyMode = learnedSet.has(wordKey);
 
-          // ⚠️ isLearnedInTargetMode теперь не используется, заменяем на isLearnedInAnyMode
-          // const isLearnedInTargetMode = learnedFlashcards.some( ... );
-
           return (
             <div
               key={wordKey}
@@ -206,7 +248,12 @@ export default function ListWords() {
                     <div className="min-w-0">
                       <div className="font-bold text-lg text-gray-800 flex items-center dark:text-gray-50">
                         {word.de}
-                        <AudioPlayer textToSpeak={word.de} lang="de-DE" />
+                        {/* 🆕 ОБНОВЛЕНО: Используем активный язык и голос */}
+                        <AudioPlayer
+                          textToSpeak={word.de}
+                          lang={activeLangCode}
+                          voice={selectedWordVoice}
+                        />
                       </div>
                       <div className="text-gray-600 text-sm dark:text-gray-300">
                         {word.ru}
@@ -223,8 +270,12 @@ export default function ListWords() {
                   {/* Немецкое предложение */}
                   <div className="text-base text-gray-700 dark:text-gray-200 flex items-center mb-1">
                     **{word.exde || "—"}**
-                    {/* Аудиоплеер для предложения */}
-                    <AudioPlayer textToSpeak={word.exde} lang="de-DE" />
+                    {/* 🆕 ОБНОВЛЕНО: Используем активный язык и голос */}
+                    <AudioPlayer
+                      textToSpeak={word.exde}
+                      lang={activeLangCode}
+                      voice={selectedWordVoice}
+                    />
                   </div>
                   {/* Русское предложение */}
                   <div className="text-sm text-gray-500 dark:text-gray-400 italic">

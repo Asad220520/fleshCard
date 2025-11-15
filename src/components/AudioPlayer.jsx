@@ -2,40 +2,38 @@ import React from "react";
 import { HiVolumeUp } from "react-icons/hi";
 
 /**
- * Компонент для воспроизведения текста с использованием встроенного в браузер TTS (Text-to-Speech) API.
+ * Компонент для воспроизведения текста с использованием встроенного TTS.
  *
  * @param {Object} props
- * @param {string} props.textToSpeak - Текст (слово), которое нужно озвучить.
- * @param {string} [props.lang='de-DE'] - Язык для озвучки (например, 'de-DE' для немецкого).
- * @param {string} [props.className] - Дополнительные классы Tailwind CSS.
+ * @param {string} props.textToSpeak - Текст для озвучки
+ * @param {string} [props.lang='de-DE'] - Язык для озвучки (если voice не передан)
+ * @param {Object} [props.voice] - Голос из window.speechSynthesis.getVoices()
+ * @param {string} [props.className] - Доп. классы Tailwind
+ * @param {string} [props.title='Прослушать'] - title для кнопки
  */
 export default function AudioPlayer({
   textToSpeak,
   lang = "de-DE",
+  voice = null,
   className = "",
   title = "Прослушать",
 }) {
-  // Проверяем доступность API синтеза речи
   const isSpeechSupported = "speechSynthesis" in window;
 
-  if (!textToSpeak || !isSpeechSupported) {
-    // Если текст пуст или браузер не поддерживает API, не отображаем кнопку.
-    return null;
-  }
+  if (!textToSpeak || !isSpeechSupported) return null;
 
   const handlePlayAudio = (event) => {
-    // Предотвращаем всплытие события клика
     event.stopPropagation();
 
     const utterance = new SpeechSynthesisUtterance(textToSpeak);
 
-    // Установка языка для корректного произношения (важно для немецкого)
-    utterance.lang = lang;
+    if (voice) {
+      utterance.voice = voice;
+    } else {
+      utterance.lang = lang;
+    }
 
-    // Опционально: можно настроить скорость (rate) и тон (pitch)
-    // utterance.rate = 0.9;
-
-    window.speechSynthesis.cancel(); // Останавливаем предыдущую речь, если есть
+    window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
   };
 

@@ -18,9 +18,12 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-icons": "^5.5.0",
+    "react-joyride": "^2.9.3",
     "react-redux": "^9.2.0",
     "react-router-dom": "^7.9.6",
-    "react-swipeable": "^7.0.2"
+    "react-shepherd": "^6.1.9",
+    "react-swipeable": "^7.0.2",
+    "shepherd.js": "^14.5.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
@@ -37,6 +40,8 @@
     "vite": "npm:rolldown-vite@7.2.2"
   },
   "overrides": {
-    "vite": "npm:rolldown-vite@7.2.2"
+    "react-shepherd": {
+      "react": "$react"
+    }
   }
 }
