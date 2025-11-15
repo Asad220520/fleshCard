@@ -7,6 +7,8 @@ import {
   removeLearned,
   selectLesson,
 } from "../../store/store";
+// 💡 ИМПОРТИРУЕМ loadLessons из вашего хранилища
+import { loadLessons } from "../../data/lessons-storage"; // <--- Убедитесь, что путь верный!
 import { lessons } from "../../data";
 import AudioPlayer from "../../components/AudioPlayer";
 
@@ -42,6 +44,9 @@ export default function ListWords() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
+  // 💡 СОСТОЯНИЕ ДЛЯ ХРАНЕНИЯ ВСЕХ УРОКОВ (для проверки существования)
+  const [allLessonData, setAllLessonData] = useState({});
+
   // 💡 ИСПОЛЬЗУЕМ ВСЕ МАССИВЫ ДЛЯ КОМПЛЕКСНОЙ ПРОВЕРКИ
   const {
     list,
@@ -57,7 +62,6 @@ export default function ListWords() {
 
   // 1. 💡 ЧТЕНИЕ АКТИВНОГО ЯЗЫКА И ИМЕНИ ГОЛОСА ИЗ LOCALSTORAGE
   const activeLangCode = useMemo(() => {
-    // В компоненте настроек гарантировано, что будет сохранено валидное значение.
     return localStorage.getItem(LANG_STORAGE_KEY) || "de";
   }, []);
 
@@ -81,14 +85,12 @@ export default function ListWords() {
       let voiceFound = null;
 
       if (savedVoiceName) {
-        // 1. Ищем голос по сохраненному имени и активному языку
         voiceFound = voices.find(
           (v) => v.name === savedVoiceName && v.lang.startsWith(activeLangCode)
         );
       }
 
       if (!voiceFound) {
-        // 2. Если не нашли, ищем первый голос для активного языка (запасной вариант)
         const defaultVoice = voices.find((v) =>
           v.lang.startsWith(activeLangCode)
         );
@@ -120,12 +122,19 @@ export default function ListWords() {
     learnedSentencePuzzle,
   ]);
 
-  // --- Загрузка данных урока при обновлении ---
+  // --- Загрузка данных урока при обновлении (ИСПРАВЛЕНО) ---
   useEffect(() => {
-    // Если слова урока не загружены, но урок существует в данных, диспатчим selectLesson.
-    if ((!list || list.length === 0) && lessons[lessonId]) {
-      dispatch(selectLesson({ words: lessons[lessonId], lessonId }));
+    // 1. Читаем ВСЕ уроки из localStorage
+    const savedLessons = loadLessons();
+    setAllLessonData(savedLessons); // Сохраняем для проверки существования
+
+    const currentLessonWords = savedLessons[lessonId];
+
+    // 2. Если в Redux список слов пуст, НО урок существует в хранилище, загружаем его в Redux.
+    if ((!words || words.length === 0) && currentLessonWords) {
+      dispatch(selectLesson({ words: currentLessonWords, lessonId }));
     }
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lessonId, dispatch]);
 
@@ -135,8 +144,7 @@ export default function ListWords() {
   const handleToggleLearned = (word, isLearnedInAnyMode) => {
     const wordData = {
       ...word,
-      // ⚠️ Поле mode больше не устанавливается здесь,
-      // markMasterLearned его не требует, removeLearned получит его в цикле.
+      // mode не нужен
     };
 
     if (isLearnedInAnyMode) {
@@ -155,24 +163,26 @@ export default function ListWords() {
     navigate(`/lesson/${lessonId}`);
   };
 
-  // --- UI Рендеринг ---
+  // --- UI Рендеринг (ИСПРАВЛЕНО) ---
 
-  if (!lessons[lessonId])
+  // 1. 💡 Проверяем существование урока по данным из localStorage
+  if (!allLessonData[lessonId])
     return (
       <div className="p-6 text-red-500 text-center dark:bg-gray-900 dark:text-red-400 min-h-screen">
         Урок не найден.
       </div>
     );
 
+  // 2. Если урок найден в localStorage, но Redux еще не успел загрузить слова
   if (words.length === 0)
     return (
-      <div className="p-12 text-center text-gray-500 bg-gray-50 min-h-[50vh] dark:bg-gray-900">
+      <div className="p-12 text-center text-gray-500 bg-gray-50 min-h-[50vh] dark:bg-gray-900 dark:bg-gray-900">
         <div className="p-8 bg-white rounded-xl shadow-lg border-2 border-dashed border-gray-300 w-full max-w-lg mx-auto dark:bg-gray-800 dark:border-gray-700 dark:shadow-xl">
           <h2 className="text-xl font-bold text-gray-700 dark:text-gray-50">
-            Список пуст
+            Загрузка слов...
           </h2>
           <p className="mt-2 text-gray-600 dark:text-gray-300">
-            В этом уроке нет слов или произошла ошибка загрузки.
+            Подождите, пока данные урока {lessonId.toUpperCase()} загрузятся.
           </p>
           <Link
             to={`/lesson/${lessonId}`}
@@ -184,7 +194,7 @@ export default function ListWords() {
       </div>
     );
 
-  // 2. Основной вид
+  // 3. Основной вид
   return (
     <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
       {/* Заголовок и Навигация */}
@@ -269,7 +279,7 @@ export default function ListWords() {
                   </p>
                   {/* Немецкое предложение */}
                   <div className="text-base text-gray-700 dark:text-gray-200 flex items-center mb-1">
-                    **{word.exde || "—"}**
+                    <span className="font-bold">{word.exde || "—"}</span>
                     {/* 🆕 ОБНОВЛЕНО: Используем активный язык и голос */}
                     <AudioPlayer
                       textToSpeak={word.exde}

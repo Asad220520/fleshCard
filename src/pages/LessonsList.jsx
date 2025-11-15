@@ -560,8 +560,6 @@ export default function LessonsList() {
                     </div>
                   </div>
                 </div>
-
-                <HiArrowRight className="w-6 h-6 text-gray-400 dark:text-gray-500" />
               </Link>
             </div>
           );
