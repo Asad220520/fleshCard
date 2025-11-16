@@ -10,9 +10,9 @@ import {
   HiOutlineAnnotation,
   HiArrowLeft,
   HiBookOpen,
-  HiOutlineRefresh, // Добавлено для иконки "Удалить все"
 } from "react-icons/hi";
 
+// 💡 ИСПРАВЛЕНИЕ 1: Добавляем новый режим в список
 const ALL_MODES = [
   "flashcards",
   "matching",
@@ -26,28 +26,33 @@ export default function LessonWords() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
+  // ✅ ИСПРАВЛЕНИЕ 2: Получаем новое состояние ИЗ ВЛОЖЕННОГО progress
   const {
     learnedFlashcards,
     learnedMatching,
     learnedQuiz,
     learnedWriting,
-    learnedSentencePuzzle,
+    learnedSentencePuzzle, // <-- Добавлено
   } = useSelector((state) => state.words.progress);
 
   const [selectedWords, setSelectedWords] = useState([]);
 
   const words = useMemo(() => {
+    // 💡 ИСПРАВЛЕНИЕ 3: Включаем новый массив в объединенный список
     const allLearned = [
       ...learnedFlashcards,
       ...learnedMatching,
       ...learnedQuiz,
       ...learnedWriting,
-      ...(learnedSentencePuzzle || []),
+      ...(learnedSentencePuzzle || []), // <-- Добавлено
     ].filter((w) => w.lessonId === lessonId);
 
     const uniqueWordsMap = new Map();
     allLearned.forEach((word) => {
+      // Ключ для уникальности (DE + Lesson ID)
       const key = `${word.de}-${word.lessonId}`;
+
+      // Чтобы сохранить все поля слова (exde, exru), которые могут понадобиться
       if (!uniqueWordsMap.has(key)) {
         uniqueWordsMap.set(key, word);
       }
@@ -60,10 +65,11 @@ export default function LessonWords() {
     learnedMatching,
     learnedQuiz,
     learnedWriting,
-    learnedSentencePuzzle,
+    learnedSentencePuzzle, // <-- Добавлено в зависимости
   ]);
 
   const dispatchRemoveFromAll = (word) => {
+    // Удаляет слово из ВСЕХ режимов, включая 'sentence_puzzle'
     ALL_MODES.forEach((mode) => {
       dispatch(
         removeLearned({ de: word.de, lessonId: word.lessonId, mode: mode })
@@ -84,24 +90,18 @@ export default function LessonWords() {
   };
 
   const handleRemoveSelected = () => {
-    if (
-      window.confirm(
-        `Вы уверены, что хотите удалить ${selectedWords.length} выбранных слов?`
-      )
-    ) {
-      selectedWords.forEach((word) => {
-        dispatchRemoveFromAll(word);
-      });
-      setSelectedWords([]);
-    }
+    selectedWords.forEach((word) => {
+      dispatchRemoveFromAll(word);
+    });
+    setSelectedWords([]);
   };
 
   const handleRemoveAll = () => {
     if (
       window.confirm(
-        `ВНИМАНИЕ! Вы уверены, что хотите удалить ${
+        `Вы уверены, что хотите удалить ${
           words.length
-        } выученных слов из урока ${lessonId.toUpperCase()} ИЗ ВСЕХ РЕЖИМОВ? Это действие необратимо.`
+        } выученных слов из урока ${lessonId.toUpperCase()} ИЗ ВСЕХ РЕЖИМОВ?`
       )
     ) {
       words.forEach((word) => {
@@ -127,7 +127,8 @@ export default function LessonWords() {
             Список пуст
           </h2>
           <p className="mt-2 text-gray-600 dark:text-gray-300">
-            Вы еще не выучили ни одного слова в этом уроке.
+            Вы еще не выучили ни одного слова в этом уроке или все выученные
+            слова были удалены.
           </p>
           <Link
             to="/learned"
@@ -141,67 +142,61 @@ export default function LessonWords() {
 
   return (
     <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
-      {/* 1. Блок Заголовка */}
       <div className="w-full max-w-lg mb-6 flex justify-between items-center">
-        <div className="flex items-center text-lg sm:text-2xl font-extrabold text-gray-800 dark:text-gray-50">
-          <HiBookOpen className="w-6 h-6 mr-2 text-sky-600 dark:text-sky-400" />
-          <span>Выучено: {lessonId.toUpperCase()}</span>
-        </div>
         <button
           onClick={() => navigate("/learned")}
-          className="flex items-center text-sm text-gray-500 hover:text-gray-700 transition dark:text-gray-400 dark:hover:text-gray-300"
+          className="flex items-center text-sky-700 hover:text-sky-800 transition font-semibold dark:text-sky-400 dark:hover:text-sky-300"
         >
-          <HiArrowLeft className="w-4 h-4 mr-1" /> Назад
+          <HiArrowLeft className="w-6 h-6 mr-1" />
+          <span className="hidden sm:inline">Назад к урокам</span>
+        </button>
+        <div className="flex items-center text-lg sm:text-2xl font-extrabold text-gray-800 dark:text-gray-50">
+          <HiBookOpen className="w-6 h-6 mr-2 text-sky-600 dark:text-sky-400" />
+          <span>Выучено: Урок {lessonId.toUpperCase()}</span>
+        </div>
+        <div className="w-16"></div>
+      </div>
+
+      <div className="w-full max-w-lg mb-6 flex flex-col sm:flex-row justify-end items-center gap-3">
+        <div className="flex gap-3">
+          <button
+            onClick={handleRemoveSelected}
+            disabled={selectedWords.length === 0}
+            className="flex items-center px-4 py-2 bg-red-500 text-white rounded-xl shadow-md font-semibold hover:bg-red-600 transition disabled:bg-gray-400 disabled:cursor-not-allowed dark:bg-red-600 dark:hover:bg-red-700 dark:disabled:bg-gray-600"
+            title="Удалить выбранные слова из всех режимов"
+          >
+            <HiTrash className="w-5 h-5 mr-1" />
+            Удалить ({selectedWords.length})
+          </button>
+
+          <button
+            onClick={handleRemoveAll}
+            className="flex items-center px-4 py-2 bg-red-500 text-white rounded-xl shadow-md font-semibold hover:bg-red-600 transition dark:bg-red-600 dark:hover:bg-red-700"
+            title="Удалить все выученные слова этого урока из всех режимов"
+          >
+            <HiTrash className="w-5 h-5" />
+            <span className="ml-1 hidden sm:inline">Удалить все</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="w-full max-w-lg mb-4 flex justify-end">
+        <button
+          onClick={handleSelectAll}
+          className="flex items-center text-sm text-sky-700 hover:text-sky-800 transition dark:text-sky-400 dark:hover:text-sky-300"
+        >
+          {selectedWords.length === words.length && words.length > 0 ? (
+            <>
+              <HiCheckCircle className="w-5 h-5 mr-1" /> Снять все
+            </>
+          ) : (
+            <>
+              <HiOutlineAnnotation className="w-5 h-5 mr-1" /> Выбрать все
+            </>
+          )}
         </button>
       </div>
 
-      {/* 2. НОВЫЙ БЛОК УПРАВЛЕНИЯ (Объединенный и центрированный) */}
-      <div className="w-full max-w-lg mb-4 p-4 bg-white rounded-xl shadow-md border border-gray-100 dark:bg-gray-800 dark:shadow-xl dark:border-gray-700">
-        <div className="flex justify-between items-center mb-3">
-          {/* Кнопка 1: Выбрать все/Снять все */}
-          <button
-            onClick={handleSelectAll}
-            className="flex items-center text-sm font-semibold text-sky-700 hover:text-sky-800 transition dark:text-sky-400 dark:hover:text-sky-300"
-          >
-            {selectedWords.length === words.length && words.length > 0 ? (
-              <>
-                <HiCheckCircle className="w-5 h-5 mr-1" /> Снять все (
-                {selectedWords.length})
-              </>
-            ) : (
-              <>
-                <HiOutlineAnnotation className="w-5 h-5 mr-1" /> Выбрать все (
-                {words.length})
-              </>
-            )}
-          </button>
-
-          {/* Кнопка 2: Удалить все */}
-          <button
-            onClick={handleRemoveAll}
-            disabled={words.length === 0}
-            className="flex items-center text-xs font-semibold text-red-500 hover:text-red-700 transition disabled:text-gray-400 dark:text-red-400 dark:hover:text-red-300 dark:disabled:text-gray-600"
-            title="Удалить ВСЕ выученные слова из урока"
-          >
-            <HiTrash className="w-4 h-4 mr-1" />
-            Удалить все
-          </button>
-        </div>
-
-        {/* Кнопка 3: Удалить выбранные (Крупная, если что-то выбрано) */}
-        {selectedWords.length > 0 && (
-          <button
-            onClick={handleRemoveSelected}
-            className="w-full mt-2 flex items-center justify-center px-4 py-3 bg-red-500 text-white rounded-xl shadow-lg font-bold hover:bg-red-600 transition"
-            title="Удалить выбранные слова из всех режимов"
-          >
-            <HiTrash className="w-6 h-6 mr-2" />
-            Удалить выбранные ({selectedWords.length})
-          </button>
-        )}
-      </div>
-
-      {/* 3. Список слов */}
       <div className="grid grid-cols-1 gap-3 w-full max-w-lg">
         {words.map((word) => {
           const isSelected = selectedWords.some(

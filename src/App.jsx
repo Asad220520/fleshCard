@@ -20,8 +20,6 @@ import AddLessonPage from "./pages/AddLessonPage.jsx";
 import Header from "./components/Header.jsx";
 import { store } from "./store/index.js";
 import Checkout from "./pages/Checkout.jsx";
-import LanguageSelection from "./pages/HomePage.jsx";
-import HomePage from "./pages/HomePage.jsx";
 
 export default function App() {
   return (
@@ -39,7 +37,6 @@ export default function App() {
           {/* pt-16 pb-[4.5rem] */}
           <main className="flex-grow  md:pb-0">
             <Routes>
-              {/* <Route path="/" element={<HomePage />} /> */}
               <Route path="/" element={<LessonsList />} />
               <Route path="/learned" element={<LearnedWords />} />
               <Route path="/settings" element={<Settings />} />

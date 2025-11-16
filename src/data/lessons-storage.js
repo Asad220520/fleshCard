@@ -8,4 +8,3 @@ export function loadLessons() {
 export function saveLessons(lessons) {
   localStorage.setItem("userLessons", JSON.stringify(lessons));
 }
-
