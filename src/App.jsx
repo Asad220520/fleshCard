@@ -1,7 +1,6 @@
 import React from "react";
 import { Provider } from "react-redux";
 import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
-import { store } from "./store/store";
 import MobileHeader from "./components/MobileHeader"; // <-- Импорт нижнего хедера
 import LessonsList from "./pages/LessonsList";
 import LearnedWords from "./pages/LearnedWords";
@@ -19,6 +18,8 @@ import Profile from "./pages/Profile.jsx";
 import SentencePuzzle from "./features/LessonModes/SentencePuzzle.jsx";
 import AddLessonPage from "./pages/AddLessonPage.jsx";
 import Header from "./components/Header.jsx";
+import { store } from "./store/index.js";
+import Checkout from "./pages/Checkout.jsx";
 
 export default function App() {
   return (
@@ -41,7 +42,10 @@ export default function App() {
               <Route path="/settings" element={<Settings />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/add-lesson" element={<AddLessonPage />} />
-
+              <Route
+                path="/checkout/:product/:lessonId"
+                element={<Checkout />}
+              />
               <Route
                 path="/learned/lesson/:lessonId"
                 element={<LessonWords />}

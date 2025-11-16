@@ -1,15 +1,17 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useParams, Link, useNavigate } from "react-router-dom";
-// 💡 ИМПОРТИРУЕМ markMasterLearned
+// 💡 ИСПРАВЛЕНИЕ 1: Импортируем markMasterLearned И removeLearned
 import {
-  markMasterLearned,
-  removeLearned,
-  selectLesson,
-} from "../../store/store";
-// 💡 ИМПОРТИРУЕМ loadLessons из вашего хранилища
-import { loadLessons } from "../../data/lessons-storage"; // <--- Убедитесь, что путь верный!
-import { lessons } from "../../data";
+  markLearned, // Оставим на всякий случай, хотя не используется напрямую
+  markMasterLearned, // <-- ИМПОРТИРОВАН
+  removeLearned, // <-- ИМПОРТИРОВАН
+  clearLessonProgress,
+} from "../../store/words/progressSlice";
+import { selectLesson } from "../../store/words/wordsSlice";
+import { loadLessons } from "../../data/lessons-storage"; // <--- Путь должен быть верным!
+import { lessons } from "../../data"; // Предполагаемый импорт, если используется
+
 import AudioPlayer from "../../components/AudioPlayer";
 
 // Импорт иконок
@@ -44,18 +46,20 @@ export default function ListWords() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  // 💡 СОСТОЯНИЕ ДЛЯ ХРАНЕНИЯ ВСЕХ УРОКОВ (для проверки существования)
+  // 💡 СОСТОЯНИЕ ДЛЯ ХРАНЕНИЯ ВСЕХ УРОКОВ
   const [allLessonData, setAllLessonData] = useState({});
 
-  // 💡 ИСПОЛЬЗУЕМ ВСЕ МАССИВЫ ДЛЯ КОМПЛЕКСНОЙ ПРОВЕРКИ
+  // 💡 ИСПРАВЛЕНИЕ 2: Корректный доступ к вложенному состоянию 'navigation' и 'progress'
+  const { list } = useSelector((state) => state.words.navigation);
+
+  // 💡 ИСПРАВЛЕНИЕ 3: Корректный доступ к вложенному состоянию 'progress'
   const {
-    list,
     learnedFlashcards,
     learnedMatching,
     learnedQuiz,
     learnedWriting,
     learnedSentencePuzzle,
-  } = useSelector((state) => state.words);
+  } = useSelector((state) => state.words.progress);
 
   // Слова для отображения: полный список из Redux Store
   const words = list?.filter((w) => w.lessonId === lessonId) || [];
@@ -122,7 +126,7 @@ export default function ListWords() {
     learnedSentencePuzzle,
   ]);
 
-  // --- Загрузка данных урока при обновлении (ИСПРАВЛЕНО) ---
+  // --- Загрузка данных урока при обновлении ---
   useEffect(() => {
     // 1. Читаем ВСЕ уроки из localStorage
     const savedLessons = loadLessons();
@@ -144,13 +148,16 @@ export default function ListWords() {
   const handleToggleLearned = (word, isLearnedInAnyMode) => {
     const wordData = {
       ...word,
-      // mode не нужен
+      // lessonId уже внутри, mode не нужен
     };
 
     if (isLearnedInAnyMode) {
-      // 💡 Если выучено (хотя бы в одном режиме), удаляем ИЗ ВСЕХ РЕЖИМОВ
+      // 💡 Если выучено, удаляем ИЗ ВСЕХ РЕЖИМОВ
+      // NOTE: removeLearned требует 'mode' в payload
       ALL_MODES.forEach((mode) => {
-        dispatch(removeLearned({ ...wordData, mode }));
+        dispatch(
+          removeLearned({ de: wordData.de, lessonId: wordData.lessonId, mode })
+        );
       });
     } else {
       // 💡 Если не выучено, используем мастер-действие, которое сохранит во ВСЕ режимы
@@ -163,7 +170,7 @@ export default function ListWords() {
     navigate(`/lesson/${lessonId}`);
   };
 
-  // --- UI Рендеринг (ИСПРАВЛЕНО) ---
+  // --- UI Рендеринг ---
 
   // 1. 💡 Проверяем существование урока по данным из localStorage
   if (!allLessonData[lessonId])

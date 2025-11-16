@@ -1,3 +1,5 @@
+// LessonsList.jsx
+
 import { useSelector } from "react-redux";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
@@ -14,6 +16,7 @@ import {
   HiDotsVertical,
 } from "react-icons/hi";
 
+// ... (LessonMenu и TourTooltip остаются без изменений)
 // -----------------------------------------------------------
 // КОМПОНЕНТ КОНТЕКСТНОГО МЕНЮ
 // -----------------------------------------------------------
@@ -67,7 +70,7 @@ const LessonMenu = ({ lessonId, onDelete, onExport, onClose }) => {
 };
 // -----------------------------------------------------------
 
-// --- КОМПОНЕНТ ПОДПИСАННОЙ ПОДСКАЗКИ (Tooltip) - ИСПРАВЛЕННЫЙ 2.0 ---
+// --- КОМПОНЕНТ ПОДПИСАННОЙ ПОДСКАЗКИ (Tooltip) ---
 const TourTooltip = ({ step, totalSteps, onNext, onSkip, targetRef }) => {
   const tooltipRef = useRef(null);
   const [position, setPosition] = useState({ top: 0, left: 0 });
@@ -238,14 +241,28 @@ const TourTooltip = ({ step, totalSteps, onNext, onSkip, targetRef }) => {
 };
 // --- КОНЕЦ КОМПОНЕНТА TOURTOOLTIP ---
 
-// Функции и моки (без изменений)
-const getUniqueLearnedWords = (wordsState) => {
+// -----------------------------------------------------------
+// ИСПРАВЛЕННАЯ ФУНКЦИЯ: getUniqueLearnedWords
+// Принимает объект progress (вместо всего wordsState)
+// -----------------------------------------------------------
+const getUniqueLearnedWords = (progressState) => {
+  // Деструктуризация для корректного доступа к массивам
+  const {
+    learnedFlashcards,
+    learnedMatching,
+    learnedQuiz,
+    learnedWriting,
+    learnedSentencePuzzle, // Убедитесь, что новый режим добавлен
+  } = progressState;
+
   const allWords = [
-    ...wordsState.learnedFlashcards,
-    ...wordsState.learnedMatching,
-    ...wordsState.learnedQuiz,
-    ...wordsState.learnedWriting,
+    ...learnedFlashcards,
+    ...learnedMatching,
+    ...learnedQuiz,
+    ...learnedWriting,
+    ...learnedSentencePuzzle, // Добавлен
   ];
+
   const uniqueWordsMap = new Map();
   allWords.forEach((word) => {
     const key = `${word.de}-${word.lessonId}`;
@@ -279,7 +296,9 @@ const TOUR_STORAGE_KEY = "hasSeenLessonsTour";
 // ГЛАВНЫЙ КОМПОНЕНТ LessonsList
 // -----------------------------------------------------------
 export default function LessonsList() {
-  const wordsState = useSelector((state) => state.words);
+  // ИСПРАВЛЕНИЕ: Получаем только вложенный объект progress
+  const progressState = useSelector((state) => state.words.progress);
+
   const [lessonsData, setLessonsData] = useState({});
   const [showTour, setShowTour] = useState(false);
   const [tourStep, setTourStep] = useState(0);
@@ -333,7 +352,8 @@ export default function LessonsList() {
     }
   }, [tourStep, tourSteps.length, handleTourComplete]);
 
-  const allUniqueLearned = getUniqueLearnedWords(wordsState);
+  // ИСПОЛЬЗОВАНИЕ: Передаем progressState в функцию
+  const allUniqueLearned = getUniqueLearnedWords(progressState);
 
   const getProgress = (lessonId) => {
     const allWords = lessonsData[lessonId] ? lessonsData[lessonId].length : 0;

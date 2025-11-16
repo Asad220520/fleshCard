@@ -11,12 +11,14 @@ import {
 } from "react-icons/hi";
 
 // --- Вспомогательная функция для объединения и уникализации ---
-const getAllUniqueLearnedWords = (state) => {
+// 💡 Обновление: Функция теперь принимает объект progress, а не весь wordsState
+const getAllUniqueLearnedWords = (progressState) => {
+  // progressState - это объект { learnedFlashcards: [...], learnedMatching: [...], ... }
   const allWords = [
-    ...state.learnedFlashcards,
-    ...state.learnedMatching,
-    ...state.learnedQuiz,
-    ...state.learnedWriting,
+    ...progressState.learnedFlashcards,
+    ...progressState.learnedMatching,
+    ...progressState.learnedQuiz,
+    ...progressState.learnedWriting,
   ];
 
   // Используем Map для хранения уникальных слов по ключу (de + lessonId)
@@ -34,8 +36,8 @@ const getAllUniqueLearnedWords = (state) => {
 
 export default function Profile() {
   // --- 1. Получение данных из Redux ---
-  // 💡 ОБНОВЛЕНИЕ: Получаем весь стейт words для объединения
-  const wordsState = useSelector((state) => state.words);
+  // ✅ ИСПРАВЛЕНИЕ: Получаем только вложенный объект progress
+  const progressState = useSelector((state) => state.words.progress);
 
   // Статические (заглушечные) данные
   const username = "Ученик";
@@ -43,10 +45,10 @@ export default function Profile() {
 
   // --- 2. Вычисление реальной статистики (с использованием useMemo) ---
 
-  // 💡 ОБНОВЛЕНИЕ: Расчет всех метрик теперь зависит от wordsState
+  // 💡 ОБНОВЛЕНИЕ: Расчет всех метрик теперь зависит от progressState
   const { totalWordsLearned, lessonsCompleted, masteryLevel } = useMemo(() => {
     // 1. ОБЪЕДИНЯЕМ ВСЕ ВЫУЧЕННЫЕ СЛОВА
-    const uniqueLearned = getAllUniqueLearnedWords(wordsState);
+    const uniqueLearned = getAllUniqueLearnedWords(progressState); // Передаем progressState
     const calculatedTotalWordsLearned = uniqueLearned.length;
 
     // 2. РАСЧЕТ ЗАВЕРШЕННЫХ УРОКОВ
@@ -87,7 +89,7 @@ export default function Profile() {
       lessonsCompleted: fullyCompletedCount,
       masteryLevel: calculatedMasteryLevel,
     };
-  }, [wordsState]); // Зависимость от всего стейта wordsState
+  }, [progressState]); // Зависимость от progressState
 
   // --- 3. Объект данных для рендеринга ---
   const userData = {

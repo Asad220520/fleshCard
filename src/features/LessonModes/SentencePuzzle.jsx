@@ -1,7 +1,9 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useParams, useNavigate } from "react-router-dom";
-import { markLearned } from "../../store/store";
+import {
+  markLearned,
+} from "../../store/words/progressSlice";
 import {
   HiArrowLeft,
   HiLightBulb,

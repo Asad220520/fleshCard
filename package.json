@@ -23,6 +23,8 @@
     "react-router-dom": "^7.9.6",
     "react-shepherd": "^6.1.9",
     "react-swipeable": "^7.0.2",
+    "redux-persist": "^6.0.0",
+    "redux-persist-indexeddb-storage": "^1.0.4",
     "shepherd.js": "^14.5.1"
   },
   "devDependencies": {

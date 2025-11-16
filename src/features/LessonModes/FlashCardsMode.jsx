@@ -2,10 +2,12 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  selectLesson,
   markLearned,
   clearLessonProgress,
-} from "../../store/store";
+} from "../../store/words/progressSlice";
+import {
+  selectLesson, // <-- selectLesson импортируется корректно
+} from "../../store/words/wordsSlice";
 import { lessons } from "../../data";
 import StudyCompletionModal from "../../components/StudyCompletionModal";
 
@@ -58,14 +60,17 @@ export default function FlashCardsMode() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
+  // 1. ИСПРАВЛЕНИЕ: Доступ к navigation (list)
+  const { list } = useSelector((state) => state.words.navigation);
+
+  // 2. ИСПРАВЛЕНИЕ: Доступ к progress (learned*)
   const {
-    list,
     learnedFlashcards,
     learnedMatching,
     learnedQuiz,
     learnedWriting,
     learnedSentencePuzzle,
-  } = useSelector((state) => state.words);
+  } = useSelector((state) => state.words.progress);
 
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
@@ -116,14 +121,8 @@ export default function FlashCardsMode() {
   }, [voices, activeLangCode, savedVoiceName]);
   // ----------------------------------------------------
 
-  // ❌ УДАЛЕНИЕ НЕНУЖНОЙ ФУНКЦИИ (была в оригинале)
-  // const getVoiceByLang = (lang) => { ... }
-
-  // ❌ УДАЛЕНИЕ НЕНУЖНЫХ ХУКОВ (были в оригинале)
-  // const getWordVoices = useMemo(() => { ... }
-  // useEffect(() => { if (selectedWordVoice && ...) { ... }
-
   const getRemainingList = useCallback(() => {
+    // 3. ИСПРАВЛЕНИЕ: learned* массивы теперь берутся из `state.words.progress`
     const allLearnedWords = [
       ...learnedFlashcards,
       ...learnedMatching,
@@ -306,18 +305,6 @@ export default function FlashCardsMode() {
 
   return (
     <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
-      <div className="w-full max-w-sm mb-4 self-center">
-        <button
-          onClick={handleGoBack}
-          className="flex items-center text-sky-700 hover:text-sky-800 transition font-semibold dark:text-sky-400 dark:hover:text-sky-300"
-        >
-          <HiArrowLeft className="w-6 h-6 mr-1" />
-          <span className="hidden sm:inline">
-            К уроку {lessonId.toUpperCase()}
-          </span>
-        </button>
-      </div>
-
       <div className="w-full max-w-sm mb-6 text-center">
         <div className="text-sm font-medium text-gray-600 mb-2 dark:text-gray-400">
           Прогресс **батча**: {index + 1} из {sessionList.length}

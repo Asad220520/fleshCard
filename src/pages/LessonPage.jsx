@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useDispatch } from "react-redux";
-import { selectLesson } from "../store/store";
+import { selectLesson } from "../store/words/wordsSlice";
 import { loadLessons } from "../data/lessons-storage";
 
 // Иконки

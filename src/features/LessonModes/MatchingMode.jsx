@@ -2,31 +2,52 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  selectLesson,
   markLearned,
   clearLessonProgress,
-} from "../../store/store";
+} from "../../store/words/progressSlice";
+import { selectLesson } from "../../store/words/wordsSlice";
 import { lessons } from "../../data";
 
-import { HiCheckCircle, HiChevronRight, HiArrowLeft } from "react-icons/hi";
+// ❗ ИМПОРТЫ ДЛЯ ЖИЗНЕЙ И ТАЙМЕРА
+import { loseLife, resetLives } from "../../store/lives/livesSlice";
+import {
+  setGameOver,
+  clearGameOver,
+} from "../../store/gameState/gameStateSlice";
+
+import {
+  HiCheckCircle,
+  HiChevronRight,
+  HiArrowLeft,
+  HiClock,
+} from "react-icons/hi";
 import LessonComplete from "../../components/LessonComplete";
 
 const CHUNK_SIZE = 5;
+const MAX_LIVES = 3; // Используйте ту же константу, что и в QuizMode
+
+// --- ФУНКЦИЯ ФОРМАТИРОВАНИЯ ВРЕМЕНИ (нужна для экрана ожидания) ---
+const formatTime = (seconds) => {
+  const min = Math.floor(seconds / 60);
+  const sec = seconds % 60;
+  return `${min.toString().padStart(2, "0")}:${sec
+    .toString()
+    .padStart(2, "0")}`;
+};
 
 export default function MatchingMode() {
   const { lessonId } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  const {
-    list,
-    learnedMatching, // <-- Используем только этот массив для фильтрации в этом режиме
-    // Остальные массивы импортируем, но не используем в фильтрации, если нужен независимый прогресс
-    learnedFlashcards,
-    learnedQuiz,
-    learnedWriting,
-    learnedSentencePuzzle,
-  } = useSelector((state) => state.words);
+  // ✅ REDUX СОСТОЯНИЯ (ДОБАВЛЕНЫ ЖИЗНИ И GAME STATE)
+  const currentLives = useSelector((state) => state.lives.count);
+  const { gameOverTimestamp, cooldownDuration } = useSelector(
+    (state) => state.gameState
+  );
+
+  const { list } = useSelector((state) => state.words.navigation);
+  const { learnedMatching } = useSelector((state) => state.words.progress);
 
   const [round, setRound] = useState(0);
   const [chunk, setChunk] = useState([]);
@@ -35,27 +56,67 @@ export default function MatchingMode() {
   const [selectedLeft, setSelectedLeft] = useState(null);
   const [matched, setMatched] = useState([]);
   const [incorrectRight, setIncorrectRight] = useState(null);
+  const [timeLeft, setTimeLeft] = useState(0); // Оставшееся время для таймера
 
-  // --- Расчет пула слов (ИЗОЛИРОВАННАЯ фильтрация) ---
+  // --- ЛОГИКА ТАЙМЕРА И GAME OVER (Копируется из QuizMode) ---
+
+  // 1. Установка временной метки при проигрыше
+  useEffect(() => {
+    if (currentLives <= 0 && !gameOverTimestamp) {
+      dispatch(setGameOver({ timestamp: Date.now() }));
+    }
+  }, [currentLives, gameOverTimestamp, dispatch]);
+
+  // 2. Логика отсчета таймера
+  useEffect(() => {
+    let interval;
+    if (gameOverTimestamp) {
+      const calculateTimeLeft = () => {
+        const elapsed = Date.now() - gameOverTimestamp;
+        const remaining = cooldownDuration - elapsed;
+
+        if (remaining <= 0) {
+          // Время истекло: сбрасываем состояние Game Over и восстанавливаем жизни
+          dispatch(clearGameOver());
+          dispatch(resetLives()); // Восстанавливаем жизни
+          setTimeLeft(0);
+          clearInterval(interval);
+          return;
+        }
+
+        setTimeLeft(Math.ceil(remaining / 1000));
+      };
+
+      calculateTimeLeft();
+      interval = setInterval(calculateTimeLeft, 1000);
+    } else {
+      setTimeLeft(0);
+    }
+
+    return () => clearInterval(interval);
+  }, [gameOverTimestamp, cooldownDuration, dispatch]);
+
+  // 3. ФУНКЦИЯ ПОКУПКИ (для перенаправления с экрана ожидания)
+  const handlePurchasePremium = () => {
+    // Перенаправляем пользователя на страницу оформления покупки,
+    // передавая ID урока для возврата
+    navigate(`/checkout/restore-lives/${lessonId}`);
+  };
+
+  // --- Расчет пула слов ---
 
   const getRemainingList = useCallback(() => {
-    // 🛑 ИСПРАВЛЕНИЕ: Используем ТОЛЬКО learnedMatching для фильтрации
-
     const learnedSet = new Set();
-    learnedMatching.forEach((w) => learnedSet.add(`${w.de}-${w.lessonId}`)); // <-- Только learnedMatching
+    // ❗ ФИЛЬТРАЦИЯ: Используем learnedMatching для этого режима
+    learnedMatching.forEach((w) => learnedSet.add(`${w.de}-${w.lessonId}`));
 
     return (
       list?.filter((word) => {
         const key = `${word.de}-${word.lessonId}`;
-        // Слово исключается, только если оно выучено В РЕЖИМЕ СОПОСТАВЛЕНИЕ
         return word.lessonId === lessonId && !learnedSet.has(key);
       }) || []
     );
-  }, [
-    list,
-    learnedMatching, // <-- В зависимости оставляем только learnedMatching
-    lessonId,
-  ]);
+  }, [list, learnedMatching, lessonId]);
 
   const remainingList = useMemo(() => getRemainingList(), [getRemainingList]);
 
@@ -70,26 +131,21 @@ export default function MatchingMode() {
   const totalWordsInLesson = list.filter((w) => w.lessonId === lessonId).length;
   const totalCompleted = totalWordsInLesson - remainingList.length;
 
-  // --- Эффекты загрузки и подготовки данных (Остальной код не меняется) ---
+  // --- Эффекты загрузки и подготовки данных ---
 
-  // 1. Загружаем урок, если списка нет
   useEffect(() => {
     if ((!list || list.length === 0) && lessons[lessonId]) {
       dispatch(selectLesson({ words: lessons[lessonId], lessonId }));
     }
   }, [list, dispatch, lessonId]);
 
-  // 2. Контроль за актуальностью текущего раунда.
   useEffect(() => {
     if (round >= chunks.length && chunks.length > 0) {
-      setRound(chunks.length - 1);
-    } else if (round >= chunks.length && remainingList.length > 0) {
       setRound(0);
     }
-  }, [round, chunks.length, remainingList.length]);
+  }, [round, chunks.length]);
 
-  // 3. Загружаем/Перезагружаем текущий раунд
-  useEffect(() => {
+  const loadRound = useCallback(() => {
     if (remainingList.length === 0) return;
     if (round >= chunks.length && chunks.length > 0) return;
 
@@ -107,9 +163,15 @@ export default function MatchingMode() {
     setIncorrectRight(null);
   }, [round, chunks, remainingList.length]);
 
+  useEffect(() => {
+    loadRound();
+  }, [loadRound]);
+
   // --- Обработчики кликов и навигации ---
 
   const handleLeftSelect = (word) => {
+    if (matched.includes(word.de)) return;
+
     if (selectedLeft?.de === word.de) {
       setSelectedLeft(null);
     } else {
@@ -119,7 +181,10 @@ export default function MatchingMode() {
   };
 
   const handleRightSelect = (word) => {
-    if (!selectedLeft) return;
+    // ❗ Если игра окончена, не позволяем взаимодействовать
+    if (currentLives <= 0) return;
+
+    if (!selectedLeft || matched.includes(word.de)) return;
 
     if (word.de === selectedLeft.de) {
       // Верное совпадение
@@ -127,7 +192,10 @@ export default function MatchingMode() {
       setIncorrectRight(null);
       setSelectedLeft(null);
     } else {
-      // Неверное совпадение
+      // ❌ Неверное совпадение: ТЕРЯЕМ ЖИЗНЬ
+      if (currentLives > 0) {
+        dispatch(loseLife());
+      }
       setIncorrectRight(word.de);
       setTimeout(() => setIncorrectRight(null), 700);
     }
@@ -141,30 +209,59 @@ export default function MatchingMode() {
         "Вы уверены? Это действие удалит прогресс для этого урока ТОЛЬКО в режиме СОПОСТАВЛЕНИЕ."
       )
     ) {
-      // Используем mode: "matching"
       dispatch(clearLessonProgress({ lessonId, mode: "matching" }));
       handleGoBack();
     }
-  }, [dispatch, lessonId, navigate, handleGoBack]);
+  }, [dispatch, lessonId, handleGoBack]);
 
   // --- Переход к следующему раунду ---
 
   useEffect(() => {
-    // Проверяем, совпали ли все слова в текущем чанке
     if (chunk.length > 0 && matched.length === chunk.length) {
-      // ДИСПАТЧ: Отмечаем слова как выученные ТОЛЬКО в режиме matching
       chunk.forEach((word) => {
         dispatch(markLearned({ word: word, mode: "matching" }));
       });
 
-      // Переход к следующему раунду
       setTimeout(() => {
         setRound((r) => r + 1);
       }, 0);
     }
   }, [matched, chunk, dispatch]);
 
-  // --- UI Рендеринг (Код не меняется) ---
+  // ❗ ПРОВЕРКА GAME OVER И ТАЙМЕРА (ЭКРАН ОЖИДАНИЯ)
+  if (currentLives <= 0 && gameOverTimestamp) {
+    if (timeLeft > 0) {
+      return (
+        <div className="p-12 text-center text-gray-800 dark:text-gray-50 bg-gray-50 min-h-[50vh] dark:bg-gray-900 transition-colors duration-300 w-full max-w-lg mx-auto rounded-xl shadow-lg mt-10">
+          <h2 className="text-3xl font-extrabold text-red-600 dark:text-red-400 mb-4">
+            💔 Жизни закончились!
+          </h2>
+          <p className="mb-6 font-semibold text-xl">
+            Подождите восстановления жизней:
+          </p>
+          <div className="text-6xl font-mono font-bold text-sky-600 dark:text-sky-400 mb-8 flex items-center justify-center">
+            <HiClock className="w-12 h-12 mr-3" />
+            {formatTime(timeLeft)}
+          </div>
+
+          <p className="mb-4">Или приобретите безлимит (Premium):</p>
+          <button
+            onClick={handlePurchasePremium} // ❗ ВЫЗОВ ФУНКЦИИ ПЕРЕНАПРАВЛЕНИЯ
+            className="w-full sm:w-auto px-6 py-3 bg-indigo-600 text-white rounded-xl shadow-md font-bold hover:bg-indigo-700 transition duration-150"
+          >
+            Купить безлимит / Восстановить мгновенно
+          </button>
+
+          <button
+            onClick={handleGoBack}
+            className="w-full sm:w-auto mt-4 px-6 py-3 text-gray-800 bg-gray-300 rounded-xl font-bold hover:bg-gray-400 transition duration-150 dark:bg-gray-700 dark:text-gray-50 dark:hover:bg-gray-600"
+          >
+            Вернуться к уроку
+          </button>
+        </div>
+      );
+    }
+  }
 
   if (totalCompleted === totalWordsInLesson && totalWordsInLesson > 0) {
     return (
@@ -188,21 +285,6 @@ export default function MatchingMode() {
 
   return (
     <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
-      {/* Заголовок и Навигация */}
-      <div className="w-full max-w-lg mb-6 flex justify-between items-center">
-        <button
-          onClick={handleGoBack}
-          className="flex items-center text-sky-700 hover:text-sky-800 transition font-semibold dark:text-sky-400 dark:hover:text-sky-300"
-        >
-          <HiArrowLeft className="w-6 h-6 mr-1" />
-          <span className="hidden sm:inline">К уроку</span>
-        </button>
-        <h1 className="text-2xl font-extrabold text-gray-800 dark:text-gray-50">
-          Сопоставление: {lessonId.toUpperCase()}
-        </h1>
-        <div className="w-12"></div>
-      </div>
-
       {/* Прогресс */}
       <div className="w-full max-w-lg mb-8 bg-white p-4 rounded-xl shadow-md border border-gray-100 dark:bg-gray-800 dark:shadow-xl dark:border-gray-700">
         <h2 className="text-sm font-semibold text-gray-700 mb-2 dark:text-gray-300">
@@ -253,7 +335,7 @@ export default function MatchingMode() {
             return (
               <button
                 key={w.de + "left"}
-                disabled={isMatched}
+                disabled={isMatched || currentLives <= 0} // ❗ ДЕАКТИВАЦИЯ ПРИ ПРОИГРЫШЕ
                 onClick={() => handleLeftSelect(w)}
                 className={`p-3 rounded-lg text-lg font-medium text-center transition duration-150 transform ${cls}`}
               >
@@ -293,7 +375,7 @@ export default function MatchingMode() {
             return (
               <button
                 key={w.de + "right"}
-                disabled={isMatched || !selectedLeft}
+                disabled={isMatched || !selectedLeft || currentLives <= 0} // ❗ ДЕАКТИВАЦИЯ ПРИ ПРОИГРЫШЕ
                 onClick={() => handleRightSelect(w)}
                 className={`p-3 rounded-lg text-lg font-medium text-center transition duration-150 ${cls}`}
               >

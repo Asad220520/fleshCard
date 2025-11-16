@@ -1,19 +1,86 @@
 import React, { useState, useEffect, useMemo } from "react";
-// Импорт иконок для переключателя темы
-import { HiSun, HiMoon, HiDownload } from "react-icons/hi"; // 🆕 Добавил HiDownload
-import { useTheme } from "../context/ThemeContext.jsx";
-import { HiCheck } from "react-icons/hi";
-// 🆕 Убрал импорт FaGooglePlay и FaApple, так как мы фокусируемся на PWA
+
+// Инлайн SVG-иконки для замены react-icons/hi
+const IconSun = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 20 20"
+    fill="currentColor"
+  >
+    <path
+      fillRule="evenodd"
+      d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4.356 2.644a1 1 0 01.146 1.25l-.894.894a1 1 0 11-1.414-1.414l.894-.894a1 1 0 011.25-.146zm-8.712 0a1 1 0 011.25.146l.894.894a1 1 0 11-1.414 1.414l-.894-.894a1 1 0 01.146-1.25zM10 16a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM4.644 14.356a1 1 0 01-.146-1.25l.894-.894a1 1 0 111.414 1.414l-.894.894a1 1 0 01-1.25.146zM15.356 5.644a1 1 0 01-1.25-.146l-.894-.894a1 1 0 111.414-1.414l.894.894a1 1 0 01-.146 1.25zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM2 10a1 1 0 011-1h1a1 1 0 110 2H3a1 1 0 01-1-1zm13.356 4.356a1 1 0 01-1.25.146l-.894-.894a1 1 0 111.414-1.414l.894.894a1 1 0 01-.146 1.25zM10 13a3 3 0 110-6 3 3 0 010 6z"
+      clipRule="evenodd"
+    />
+  </svg>
+);
+const IconMoon = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 20 20"
+    fill="currentColor"
+  >
+    <path d="M17.293 12.707a8.995 8.995 0 01-1.802-1.92A1 1 0 0014 10a1 1 0 011-1h1.5a.5.5 0 00.5-.5V8a1 1 0 00-1-1h-1.5a.5.5 0 00-.5.5V9a1 1 0 01-1-1V5a5 5 0 00-5-5A10 10 0 000 10c0 5.523 4.477 10 10 10a10 10 0 007.293-3.293zM10 18a8 8 0 01-8-8c0-3.666 1.956-6.84 4.887-8.675A8 8 0 0018 10a8 8 0 01-8 8z" />
+  </svg>
+);
+const IconDownload = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 20 20"
+    fill="currentColor"
+  >
+    <path
+      fillRule="evenodd"
+      d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm6.293-7.707a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414l-1.293-1.293V14a1 1 0 11-2 0v-4.586l-1.293 1.293a1 1 0 01-1.414-1.414l3-3z"
+      clipRule="evenodd"
+    />
+  </svg>
+);
+const IconCheck = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 20 20"
+    fill="currentColor"
+  >
+    <path
+      fillRule="evenodd"
+      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+      clipRule="evenodd"
+    />
+  </svg>
+);
 
 // 💡 Глобальные константы
 const SUPPORTED_TTS_LANGS = ["de", "en", "ko"];
 const LANG_STORAGE_KEY = "selectedTtsLang";
 const VOICE_STORAGE_KEY = "selectedTtsVoiceName";
-
-// ❌ Условные ссылки и функция isMobileDevice удалены, так как они не нужны для PWA инструкции.
+const THEME_STORAGE_KEY = "theme";
 
 export default function Settings() {
-  const { theme, toggleTheme } = useTheme();
+  // 1. Имплементация логики темы (замена useTheme)
+  const [theme, setTheme] = useState(
+    () => localStorage.getItem(THEME_STORAGE_KEY) || "light"
+  );
+
+  const toggleTheme = () => {
+    setTheme((prevTheme) => (prevTheme === "light" ? "dark" : "light"));
+  };
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === "dark") {
+      root.classList.add("dark");
+      localStorage.setItem(THEME_STORAGE_KEY, "dark");
+    } else {
+      root.classList.remove("dark");
+      localStorage.setItem(THEME_STORAGE_KEY, "light");
+    }
+  }, [theme]);
+  // Конец логики темы
 
   const [currentTtsLang, setCurrentTtsLang] = useState("");
   const [currentTtsVoiceName, setCurrentTtsVoiceName] = useState("");
@@ -22,16 +89,18 @@ export default function Settings() {
   const [isLangSaved, setIsLangSaved] = useState(false);
   const [isVoiceSaved, setIsVoiceSaved] = useState(false);
 
-  // ❌ Убрал isMobile
-
   // 1. Загрузка голосов
   useEffect(() => {
     const loadVoices = () => setVoices(window.speechSynthesis.getVoices());
     loadVoices();
+    // Слушаем событие изменения голосов (может сработать после загрузки страницы)
     window.speechSynthesis.onvoiceschanged = loadVoices;
-  }, []);
 
-  // ❌ Убрал useEffect для isMobile
+    // Очистка слушателя при размонтировании
+    return () => {
+      window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
 
   // 2. Загрузка языка и имени голоса при монтировании
   useEffect(() => {
@@ -56,28 +125,29 @@ export default function Settings() {
 
   // 3. Фильтрация голосов по активному языку
   const getFilteredVoices = useMemo(() => {
+    // Ждем, пока currentTtsLang будет установлен
+    if (!currentTtsLang) return [];
+    // Фильтруем голоса, которые начинаются с выбранного языка (например, 'de' для 'de-DE')
     return voices.filter((v) => v.lang.startsWith(currentTtsLang));
   }, [voices, currentTtsLang]);
 
-  // 4. Сброс имени голоса при смене языка
+  // 4. Сброс имени голоса при смене языка или если сохраненный голос недействителен
   useEffect(() => {
-    // Если голоса для нового языка существуют, но сохраненное имя не принадлежит им,
-    // или если имя голоса пусто, устанавливаем первый голос как дефолтный.
+    // Проверяем, существует ли текущий выбранный голос в отфильтрованном списке
     const isVoiceValid = getFilteredVoices.some(
       (v) => v.name === currentTtsVoiceName
     );
 
-    if (
-      getFilteredVoices.length > 0 &&
-      (!currentTtsVoiceName || !isVoiceValid)
-    ) {
+    if (getFilteredVoices.length > 0 && !isVoiceValid) {
+      // Если голоса есть, но текущий невалиден, выбираем первый доступный
       setCurrentTtsVoiceName(getFilteredVoices[0].name);
     } else if (getFilteredVoices.length === 0) {
+      // Если голосов для языка нет, сбрасываем имя
       setCurrentTtsVoiceName("");
     }
-    // Сбрасываем флаг сохранения при смене языка
+    // Сбрасываем флаг сохранения при любом изменении голоса, вызванном сменой языка
     setIsVoiceSaved(false);
-  }, [getFilteredVoices, currentTtsVoiceName]);
+  }, [getFilteredVoices]); // Зависимость только от отфильтрованных голосов
 
   // 5. Функции сохранения
   const handleSaveTtsLang = () => {
@@ -109,9 +179,9 @@ export default function Settings() {
           aria-label="Переключить тему"
         >
           {theme === "light" ? (
-            <HiMoon className="w-6 h-6" />
+            <IconMoon className="w-6 h-6" />
           ) : (
-            <HiSun className="w-6 h-6" />
+            <IconSun className="w-6 h-6" />
           )}
         </button>
       </div>
@@ -156,7 +226,7 @@ export default function Settings() {
           >
             {isLangSaved ? (
               <>
-                <HiCheck className="w-5 h-5 mr-1" />
+                <IconCheck className="w-5 h-5 mr-1" />
                 Сохранено
               </>
             ) : (
@@ -216,7 +286,7 @@ export default function Settings() {
           >
             {isVoiceSaved ? (
               <>
-                <HiCheck className="w-5 h-5 mr-1" />
+                <IconCheck className="w-5 h-5 mr-1" />
                 Сохранено
               </>
             ) : (
@@ -226,10 +296,10 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* 3. 🆕 Секция: Установить как Мобильное Приложение (PWA) */}
+      {/* 3. Секция: Установить как Мобильное Приложение (PWA) */}
       <div className="bg-white p-4 rounded-xl shadow-md dark:bg-gray-800">
         <h2 className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-3 flex items-center">
-          <HiDownload className="w-6 h-6 mr-2 text-sky-600 dark:text-sky-400" />
+          <IconDownload className="w-6 h-6 mr-2 text-sky-600 dark:text-sky-400" />
           Установить как приложение (PWA)
         </h2>
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">

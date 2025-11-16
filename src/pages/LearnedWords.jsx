@@ -12,12 +12,9 @@ const pluralizeWords = (count) => {
 
 export default function LearnedWords() {
   // 💡 ОБНОВЛЕНИЕ: Получаем все четыре массива прогресса
-  const {
-    learnedFlashcards,
-    learnedMatching,
-    learnedQuiz,
-    learnedWriting,
-  } = useSelector((state) => state.words);
+  // ✅ ИСПРАВЛЕНИЕ: Доступ к массивам через state.words.progress
+  const { learnedFlashcards, learnedMatching, learnedQuiz, learnedWriting } =
+    useSelector((state) => state.words.progress);
 
   // --- 💡 ФУНКЦИЯ ОБЪЕДИНЕНИЯ И УДАЛЕНИЯ ДУБЛИКАТОВ ---
   const getAllUniqueLearnedWords = () => {
@@ -28,10 +25,10 @@ export default function LearnedWords() {
       ...learnedQuiz,
       ...learnedWriting,
     ];
-    
+
     // 2. Используем Map для хранения уникальных слов по ключу (de + lessonId)
     const uniqueWordsMap = new Map();
-    
+
     allWords.forEach((word) => {
       // Ключ для уникальности: Немецкое слово + ID урока
       const key = `${word.de}-${word.lessonId}`;
@@ -43,9 +40,9 @@ export default function LearnedWords() {
     // 3. Возвращаем массив уникальных слов
     return Array.from(uniqueWordsMap.values());
   };
-  
+
   const allUniqueLearned = getAllUniqueLearnedWords();
-  
+
   // Собираем уроки, из которых есть выученные слова (теперь из объединенного списка)
   const lessonsMap = allUniqueLearned.reduce((acc, word) => {
     // ✅ ИСПРАВЛЕНИЕ ДАННЫХ: Убеждаемся, что lessonId существует, является строкой и не пустой.

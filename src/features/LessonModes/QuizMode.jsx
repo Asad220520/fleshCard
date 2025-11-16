@@ -3,9 +3,9 @@ import { useDispatch, useSelector } from "react-redux";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   markLearned,
-  selectLesson,
   clearLessonProgress,
-} from "../../store/store";
+} from "../../store/words/progressSlice";
+import { selectLesson } from "../../store/words/wordsSlice";
 import { lessons } from "../../data";
 import {
   HiCheck,
@@ -13,30 +13,45 @@ import {
   HiArrowRight,
   HiArrowLeft,
   HiOutlineRefresh,
+  HiClock, // Иконка часов
 } from "react-icons/hi";
 import LessonComplete from "../../components/LessonComplete";
-// 🆕 ИМПОРТ: AudioPlayer для озвучивания
 import AudioPlayer from "../../components/AudioPlayer";
+// ❗ REDUX ИМПОРТЫ
+import { loseLife, resetLives } from "../../store/lives/livesSlice"; // Используем resetLives
+import {
+  setGameOver,
+  clearGameOver,
+} from "../../store/gameState/gameStateSlice";
 
+// КОНСТАНТЫ
 const MAX_SESSION_SIZE = 15;
+const MAX_LIVES = 3; // Установите максимальное количество жизней
 const LANG_STORAGE_KEY = "selectedTtsLang";
 const VOICE_STORAGE_KEY = "selectedTtsVoiceName";
 
-// ❌ УДАЛЕНО: ALL_MODES не используется в QuizMode
+// --- ФУНКЦИЯ ФОРМАТИРОВАНИЯ ВРЕМЕНИ ---
+const formatTime = (seconds) => {
+  const min = Math.floor(seconds / 60);
+  const sec = seconds % 60;
+  return `${min.toString().padStart(2, "0")}:${sec
+    .toString()
+    .padStart(2, "0")}`;
+};
 
 export default function QuizMode() {
   const { lessonId } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  const {
-    list,
-    learnedFlashcards,
-    learnedMatching,
-    learnedQuiz, // <-- Единственное состояние, которое мы используем для фильтрации
-    learnedWriting,
-    learnedSentencePuzzle,
-  } = useSelector((state) => state.words);
+  // ❗ REDUX СОСТОЯНИЯ
+  const currentLives = useSelector((state) => state.lives.count);
+  const { gameOverTimestamp, cooldownDuration } = useSelector(
+    (state) => state.gameState
+  );
+
+  const { list } = useSelector((state) => state.words.navigation);
+  const { learnedQuiz } = useSelector((state) => state.words.progress);
 
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState(null);
@@ -45,8 +60,18 @@ export default function QuizMode() {
   const [isSessionComplete, setIsSessionComplete] = useState(false);
   const [restartCount, setRestartCount] = useState(0);
   const [wordsToReview, setWordsToReview] = useState([]);
+  const [timeLeft, setTimeLeft] = useState(0); // Оставшееся время для таймера
 
-  // 1. 💡 ЛОГИКА TTS: ЧТЕНИЕ НАСТРОЕК
+  // ❗ НОВАЯ ФУНКЦИЯ: Обработка покупки (перенаправляет)
+  const handlePurchasePremium = () => {
+    window.speechSynthesis.cancel();
+
+    // Перенаправляем пользователя на страницу оформления покупки,
+    // передавая ID урока для возврата
+    navigate(`/checkout/restore-lives/${lessonId}`);
+  };
+
+  // --- ЛОГИКА TTS (Прослушивание) ---
   const activeLangCode = useMemo(() => {
     return localStorage.getItem(LANG_STORAGE_KEY) || "de";
   }, []);
@@ -81,25 +106,58 @@ export default function QuizMode() {
       setSelectedWordVoice(voiceFound);
     }
   }, [voices, activeLangCode, savedVoiceName]);
-  // 🛑 ИСПРАВЛЕНИЕ: Функция для получения оставшихся слов, фильтруем ТОЛЬКО по learnedQuiz
+
+  // --- ЛОГИКА ТАЙМЕРА И GAME OVER ---
+
+  // 1. Установка временной метки при проигрыше
+  useEffect(() => {
+    if (currentLives <= 0 && !gameOverTimestamp) {
+      window.speechSynthesis.cancel();
+      dispatch(setGameOver({ timestamp: Date.now() }));
+    }
+  }, [currentLives, gameOverTimestamp, dispatch]);
+
+  // 2. Логика отсчета таймера
+  useEffect(() => {
+    let interval;
+    if (gameOverTimestamp) {
+      const calculateTimeLeft = () => {
+        const elapsed = Date.now() - gameOverTimestamp;
+        const remaining = cooldownDuration - elapsed;
+
+        if (remaining <= 0) {
+          // Время истекло: сбрасываем состояние Game Over и восстанавливаем жизни
+          dispatch(clearGameOver());
+          dispatch(resetLives()); // Восстанавливаем жизни
+          setTimeLeft(0);
+          clearInterval(interval);
+          return;
+        }
+
+        setTimeLeft(Math.ceil(remaining / 1000));
+      };
+
+      calculateTimeLeft(); // Расчет при монтировании/изменении
+      interval = setInterval(calculateTimeLeft, 1000);
+    } else {
+      setTimeLeft(0);
+    }
+
+    return () => clearInterval(interval);
+  }, [gameOverTimestamp, cooldownDuration, dispatch]);
+
+  // 🛑 Функция для получения оставшихся слов, фильтруем ТОЛЬКО по learnedQuiz
   const getRemainingList = useCallback(() => {
-    // 1. Создаем Set выученных слов ТОЛЬКО ИЗ РЕЖИМА QUIZ
     const learnedSet = new Set();
     learnedQuiz.forEach((w) => learnedSet.add(`${w.de}-${w.lessonId}`));
 
-    // 2. Фильтруем list: оставляем только те слова, которых НЕТ в learnedQuiz
     return (
       list?.filter((word) => {
         const key = `${word.de}-${word.lessonId}`;
-        // Теперь слово исключается, только если оно выучено В РЕЖИМЕ QUIZ
         return word.lessonId === lessonId && !learnedSet.has(key);
       }) || []
     );
-  }, [
-    list,
-    learnedQuiz, // <-- В зависимости оставляем только learnedQuiz
-    lessonId,
-  ]);
+  }, [list, learnedQuiz, lessonId]);
 
   const allRemainingList = useMemo(
     () => getRemainingList(),
@@ -111,7 +169,6 @@ export default function QuizMode() {
     const reviewBatch = wordsToReview;
     const needNewWords = MAX_SESSION_SIZE - reviewBatch.length;
 
-    // Исключаем слова для повторения из общего списка невыученных
     const remainingForNewBatch = allRemainingList.filter(
       (word) => !reviewBatch.some((r) => r.de === word.de)
     );
@@ -162,20 +219,22 @@ export default function QuizMode() {
 
   const current = sessionList[index] || null;
 
-  // 2. 💡 ЛОГИКА TTS: АВТОМАТИЧЕСКОЕ ОЗВУЧИВАНИЕ ПРИ СМЕНЕ СЛОВА
+  // 💡 ЛОГИКА TTS: АВТОМАТИЧЕСКОЕ ОЗВУЧИВАНИЕ ПРИ СМЕНЕ СЛОВА
   useEffect(() => {
+    window.speechSynthesis.cancel();
+
     if (current && selectedWordVoice) {
       try {
         const utterance = new SpeechSynthesisUtterance(current.de);
         utterance.lang = selectedWordVoice.lang;
         utterance.voice = selectedWordVoice;
-        utterance.rate = 0.8; // Немного медленнее, чтобы было понятнее
+        utterance.rate = 0.8;
         window.speechSynthesis.speak(utterance);
       } catch (e) {
         console.error("TTS failed:", e);
       }
     }
-    // Озвучивание происходит при смене 'current' и при готовности 'selectedWordVoice'
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, selectedWordVoice]);
 
   useEffect(() => {
@@ -208,46 +267,80 @@ export default function QuizMode() {
 
   const handleSelect = (opt) => {
     if (selected) return;
-
-    // 🛑 ОСТАНОВКА: Останавливаем автоматическое озвучивание при выборе ответа
     window.speechSynthesis.cancel();
-
     setSelected(opt);
 
     if (opt.de === current.de) {
-      // 💡 markLearned сработает только для learnedQuiz
+      // ✅ ПРАВИЛЬНЫЙ ОТВЕТ
       dispatch(markLearned({ word: current, mode: "quiz" }));
       advance(1000);
     } else {
+      // ❌ НЕПРАВИЛЬНЫЙ ОТВЕТ: Уменьшаем жизнь и добавляем слово в список на повторение
+      if (currentLives > 0) {
+        dispatch(loseLife());
+      }
       setWordsToReview((prev) => [...prev, current]);
-      advance(1000); // Переходим дальше после показа ошибки
+      advance(1000);
     }
   };
 
   const handleKnow = () => {
     if (current) {
-      // 🛑 ОСТАНОВКА: Останавливаем автоматическое озвучивание
       window.speechSynthesis.cancel();
-
-      // 💡 markLearned сработает только для learnedQuiz
       dispatch(markLearned({ word: current, mode: "quiz" }));
       advance(0);
     }
   };
 
   const handleDontKnow = () => {
-    // 🛑 ОСТАНОВКА: Останавливаем автоматическое озвучивание
     window.speechSynthesis.cancel();
-
     setWordsToReview((prev) => [...prev, current]);
     advance(0);
   };
 
   const handleGoBack = () => {
-    // 🛑 ОСТАНОВКА: Останавливаем автоматическое озвучивание при выходе
     window.speechSynthesis.cancel();
     navigate(`/lesson/${lessonId}`);
   };
+
+  // ❗ ПРОВЕРКА GAME OVER И ТАЙМЕРА
+  if (currentLives <= 0 && gameOverTimestamp) {
+    window.speechSynthesis.cancel();
+
+    if (timeLeft > 0) {
+      // 🛑 ЭКРАН ОЖИДАНИЯ
+      return (
+        <div className="p-12 text-center text-gray-800 dark:text-gray-50 bg-gray-50 min-h-[50vh] dark:bg-gray-900 transition-colors duration-300 w-full max-w-lg mx-auto rounded-xl shadow-lg mt-10">
+          <h2 className="text-3xl font-extrabold text-red-600 dark:text-red-400 mb-4">
+            💔 Жизни закончились!
+          </h2>
+          <p className="mb-6 font-semibold text-xl">
+            Подождите восстановления жизней:
+          </p>
+          <div className="text-6xl font-mono font-bold text-sky-600 dark:text-sky-400 mb-8 flex items-center justify-center">
+            <HiClock className="w-12 h-12 mr-3" />
+            {formatTime(timeLeft)}
+          </div>
+
+          <p className="mb-4">Или приобретите безлимит (Premium):</p>
+          <button
+            onClick={handlePurchasePremium} // ❗ ВЫЗОВ ФУНКЦИИ ПЕРЕНАПРАВЛЕНИЯ
+            className="w-full sm:w-auto px-6 py-3 bg-indigo-600 text-white rounded-xl shadow-md font-bold hover:bg-indigo-700 transition duration-150"
+          >
+            Купить безлимит / Восстановить мгновенно
+          </button>
+
+          <button
+            onClick={() => navigate(`/lesson/${lessonId}`)}
+            className="w-full sm:w-auto mt-4 px-6 py-3 text-gray-800 bg-gray-300 rounded-xl font-bold hover:bg-gray-400 transition duration-150 dark:bg-gray-700 dark:text-gray-50 dark:hover:bg-gray-600"
+          >
+            Вернуться к уроку
+          </button>
+        </div>
+      );
+    }
+    // Если таймер истек, useEffect сработает, восстановит жизни и продолжит игру
+  }
 
   if (totalRemaining === 0)
     return (
@@ -261,7 +354,6 @@ export default function QuizMode() {
   if (isSessionComplete) {
     const nextRemaining = allRemainingList.length;
 
-    // 🛑 ОСТАНОВКА: Если сессия завершена, отменяем любые активные TTS
     window.speechSynthesis.cancel();
 
     return (
@@ -318,18 +410,6 @@ export default function QuizMode() {
 
   return (
     <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
-      <div className="w-full max-w-lg mb-4 self-center">
-        <button
-          onClick={handleGoBack}
-          className="flex items-center text-sky-700 hover:text-sky-800 transition font-semibold dark:text-sky-400 dark:hover:text-sky-300"
-        >
-          <HiArrowLeft className="w-6 h-6 mr-1" />
-          <span className="hidden sm:inline">
-            К уроку {lessonId.toUpperCase()}
-          </span>
-        </button>
-      </div>
-
       <div className="w-full max-w-lg mb-6 text-center">
         <div className="text-sm font-medium text-gray-600 mb-2 dark:text-gray-400">
           Вопрос {index + 1} из {sessionList.length} (Батч)
@@ -350,7 +430,6 @@ export default function QuizMode() {
           <span className="text-4xl font-bold tracking-wide">
             {current?.de.toUpperCase()}
           </span>
-          {/* 🆕 ДОБАВЛЕНО: Кнопка для ручного повтора озвучивания */}
           <AudioPlayer
             textToSpeak={current?.de}
             lang={activeLangCode}

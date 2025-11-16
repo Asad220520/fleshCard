@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { removeLearned } from "../store/store"; // removeLearned
+import { removeLearned } from "../store/words/progressSlice"; // removeLearned
 
 import AudioPlayer from "../components/AudioPlayer";
 import {
@@ -26,14 +26,14 @@ export default function LessonWords() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  // 💡 ИСПРАВЛЕНИЕ 2: Получаем новое состояние
+  // ✅ ИСПРАВЛЕНИЕ 2: Получаем новое состояние ИЗ ВЛОЖЕННОГО progress
   const {
     learnedFlashcards,
     learnedMatching,
     learnedQuiz,
     learnedWriting,
     learnedSentencePuzzle, // <-- Добавлено
-  } = useSelector((state) => state.words);
+  } = useSelector((state) => state.words.progress);
 
   const [selectedWords, setSelectedWords] = useState([]);
 

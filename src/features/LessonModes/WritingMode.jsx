@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback, useMemo } from "react"; // Добавлен useMemo
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   markLearned,
-  selectLesson,
   clearLessonProgress,
-} from "../../store/store"; // Добавлен clearLessonProgress
+} from "../../store/words/progressSlice";
+import { selectLesson } from "../../store/words/wordsSlice";
 import { lessons } from "../../data";
 // Импорт иконок
 import {
@@ -44,8 +44,11 @@ export default function WritingMode() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
+  // ✅ ИСПРАВЛЕНИЕ 1: list теперь находится в state.words.navigation
+  const { list } = useSelector((s) => s.words.navigation);
+
+  // ✅ ИСПРАВЛЕНИЕ 2: learned* массивы теперь находятся в state.words.progress
   const {
-    list,
     // 🛑 Используем только learnedWriting для фильтрации в этом режиме
     learnedWriting,
     // Остальные массивы импортируем, но не используем в фильтрации, если нужен независимый прогресс
@@ -53,7 +56,7 @@ export default function WritingMode() {
     learnedMatching,
     learnedQuiz,
     learnedSentencePuzzle,
-  } = useSelector((s) => s.words);
+  } = useSelector((s) => s.words.progress);
 
   const [index, setIndex] = useState(0);
   const [input, setInput] = useState("");
@@ -275,19 +278,6 @@ export default function WritingMode() {
 
   return (
     <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
-      {/* Кнопка Назад */}
-      <div className="w-full max-w-lg mb-4 self-center">
-        <button
-          onClick={handleGoBack}
-          className="flex items-center text-sky-700 hover:text-sky-800 transition font-semibold dark:text-sky-400 dark:hover:text-sky-300"
-        >
-          <HiArrowLeft className="w-6 h-6 mr-1" />
-          <span className="hidden sm:inline">
-            К уроку {lessonId.toUpperCase()}
-          </span>
-        </button>
-      </div>
-
       {/* Прогресс */}
       <div className="w-full max-w-lg mb-8 text-center">
         <div className="text-sm font-medium text-gray-600 mb-2 dark:text-gray-400">
