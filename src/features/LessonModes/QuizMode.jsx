@@ -13,12 +13,11 @@ import {
   HiArrowRight,
   HiArrowLeft,
   HiOutlineRefresh,
-  HiClock, // Иконка часов
+  HiClock,
 } from "react-icons/hi";
 import LessonComplete from "../../components/LessonComplete";
 import AudioPlayer from "../../components/AudioPlayer";
-// ❗ REDUX ИМПОРТЫ
-import { loseLife, resetLives } from "../../store/lives/livesSlice"; // Используем resetLives
+import { loseLife, resetLives } from "../../store/lives/livesSlice";
 import {
   setGameOver,
   clearGameOver,
@@ -26,7 +25,7 @@ import {
 
 // КОНСТАНТЫ
 const MAX_SESSION_SIZE = 15;
-const MAX_LIVES = 3; // Установите максимальное количество жизней
+// const MAX_LIVES = 3; // Не используется, так как жизни берутся из Redux
 const LANG_STORAGE_KEY = "selectedTtsLang";
 const VOICE_STORAGE_KEY = "selectedTtsVoiceName";
 
@@ -60,18 +59,15 @@ export default function QuizMode() {
   const [isSessionComplete, setIsSessionComplete] = useState(false);
   const [restartCount, setRestartCount] = useState(0);
   const [wordsToReview, setWordsToReview] = useState([]);
-  const [timeLeft, setTimeLeft] = useState(0); // Оставшееся время для таймера
+  const [timeLeft, setTimeLeft] = useState(0);
 
-  // ❗ НОВАЯ ФУНКЦИЯ: Обработка покупки (перенаправляет)
+  // ❗ Обработка покупки (перенаправляет)
   const handlePurchasePremium = () => {
     window.speechSynthesis.cancel();
-
-    // Перенаправляем пользователя на страницу оформления покупки,
-    // передавая ID урока для возврата
     navigate(`/checkout/restore-lives/${lessonId}`);
   };
 
-  // --- ЛОГИКА TTS (Прослушивание) ---
+  // --- ЛОГИКА TTS ---
   const activeLangCode = useMemo(() => {
     return localStorage.getItem(LANG_STORAGE_KEY) || "de";
   }, []);
@@ -126,9 +122,8 @@ export default function QuizMode() {
         const remaining = cooldownDuration - elapsed;
 
         if (remaining <= 0) {
-          // Время истекло: сбрасываем состояние Game Over и восстанавливаем жизни
           dispatch(clearGameOver());
-          dispatch(resetLives()); // Восстанавливаем жизни
+          dispatch(resetLives());
           setTimeLeft(0);
           clearInterval(interval);
           return;
@@ -137,7 +132,7 @@ export default function QuizMode() {
         setTimeLeft(Math.ceil(remaining / 1000));
       };
 
-      calculateTimeLeft(); // Расчет при монтировании/изменении
+      calculateTimeLeft();
       interval = setInterval(calculateTimeLeft, 1000);
     } else {
       setTimeLeft(0);
@@ -146,7 +141,7 @@ export default function QuizMode() {
     return () => clearInterval(interval);
   }, [gameOverTimestamp, cooldownDuration, dispatch]);
 
-  // 🛑 Функция для получения оставшихся слов, фильтруем ТОЛЬКО по learnedQuiz
+  // 🛑 Функция для получения оставшихся слов
   const getRemainingList = useCallback(() => {
     const learnedSet = new Set();
     learnedQuiz.forEach((w) => learnedSet.add(`${w.de}-${w.lessonId}`));
@@ -165,6 +160,7 @@ export default function QuizMode() {
   );
   const totalRemaining = allRemainingList.length;
 
+  // 💡 ЛОГИКА СБОРА СЛОВ ДЛЯ БАТЧА (слова на повторение + новые слова)
   const loadNextBatch = useCallback(() => {
     const reviewBatch = wordsToReview;
     const needNewWords = MAX_SESSION_SIZE - reviewBatch.length;
@@ -174,6 +170,7 @@ export default function QuizMode() {
     );
 
     const newWordsBatch = remainingForNewBatch.slice(0, needNewWords);
+
     const nextSessionList = [...reviewBatch, ...newWordsBatch].sort(
       () => Math.random() - 0.5
     );
@@ -190,8 +187,10 @@ export default function QuizMode() {
   const handleRestartSession = useCallback(() => {
     setIsSessionComplete(false);
     setIndex(0);
-    setSessionList(allRemainingList.slice(0, MAX_SESSION_SIZE));
+    const initialBatch = allRemainingList.slice(0, MAX_SESSION_SIZE);
+    setSessionList(initialBatch);
     setWordsToReview([]);
+    setRestartCount((prev) => prev + 1);
   }, [allRemainingList]);
 
   const handleRepeatLesson = () => {
@@ -201,7 +200,7 @@ export default function QuizMode() {
       )
     ) {
       dispatch(clearLessonProgress({ lessonId, mode: "quiz" }));
-      handleGoBack();
+      handleRestartSession();
     }
   };
 
@@ -234,8 +233,7 @@ export default function QuizMode() {
         console.error("TTS failed:", e);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current, selectedWordVoice]);
+  }, [current, selectedWordVoice, restartCount]);
 
   useEffect(() => {
     if (sessionList.length > 0 && index >= sessionList.length) {
@@ -245,6 +243,7 @@ export default function QuizMode() {
     }
   }, [index, sessionList.length]);
 
+  // 💡 ГЕНЕРАЦИЯ ВАРИАНТОВ ОТВЕТА
   useEffect(() => {
     if (!current) {
       setOptions([]);
@@ -271,7 +270,7 @@ export default function QuizMode() {
     setSelected(opt);
 
     if (opt.de === current.de) {
-      // ✅ ПРАВИЛЬНЫЙ ОТВЕТ
+      // ✅ ПРАВИЛЬНЫЙ ОТВЕТ: Отмечаем как выученное
       dispatch(markLearned({ word: current, mode: "quiz" }));
       advance(1000);
     } else {
@@ -279,7 +278,9 @@ export default function QuizMode() {
       if (currentLives > 0) {
         dispatch(loseLife());
       }
-      setWordsToReview((prev) => [...prev, current]);
+      if (!wordsToReview.some((w) => w.de === current.de)) {
+        setWordsToReview((prev) => [...prev, current]);
+      }
       advance(1000);
     }
   };
@@ -293,9 +294,13 @@ export default function QuizMode() {
   };
 
   const handleDontKnow = () => {
-    window.speechSynthesis.cancel();
-    setWordsToReview((prev) => [...prev, current]);
-    advance(0);
+    if (current) {
+      window.speechSynthesis.cancel();
+      if (!wordsToReview.some((w) => w.de === current.de)) {
+        setWordsToReview((prev) => [...prev, current]);
+      }
+      advance(0);
+    }
   };
 
   const handleGoBack = () => {
@@ -303,7 +308,7 @@ export default function QuizMode() {
     navigate(`/lesson/${lessonId}`);
   };
 
-  // ❗ ПРОВЕРКА GAME OVER И ТАЙМЕРА
+  // ❗ ПРОВЕРКА GAME OVER И ТАЙМЕРА (ЭКРАН ОЖИДАНИЯ)
   if (currentLives <= 0 && gameOverTimestamp) {
     window.speechSynthesis.cancel();
 
@@ -324,14 +329,14 @@ export default function QuizMode() {
 
           <p className="mb-4">Или приобретите безлимит (Premium):</p>
           <button
-            onClick={handlePurchasePremium} // ❗ ВЫЗОВ ФУНКЦИИ ПЕРЕНАПРАВЛЕНИЯ
+            onClick={handlePurchasePremium}
             className="w-full sm:w-auto px-6 py-3 bg-indigo-600 text-white rounded-xl shadow-md font-bold hover:bg-indigo-700 transition duration-150"
           >
             Купить безлимит / Восстановить мгновенно
           </button>
 
           <button
-            onClick={() => navigate(`/lesson/${lessonId}`)}
+            onClick={handleGoBack} // Используем handleGoBack для чистого перехода
             className="w-full sm:w-auto mt-4 px-6 py-3 text-gray-800 bg-gray-300 rounded-xl font-bold hover:bg-gray-400 transition duration-150 dark:bg-gray-700 dark:text-gray-50 dark:hover:bg-gray-600"
           >
             Вернуться к уроку
@@ -339,10 +344,10 @@ export default function QuizMode() {
         </div>
       );
     }
-    // Если таймер истек, useEffect сработает, восстановит жизни и продолжит игру
   }
 
-  if (totalRemaining === 0)
+  // ЭКРАН ЗАВЕРШЕНИЯ УРОКА
+  if (totalRemaining === 0 && wordsToReview.length === 0)
     return (
       <LessonComplete
         lessonId={lessonId}
@@ -351,6 +356,7 @@ export default function QuizMode() {
       />
     );
 
+  // ЭКРАН ЗАВЕРШЕНИЯ СЕССИИ (БАТЧА)
   if (isSessionComplete) {
     const nextRemaining = allRemainingList.length;
 
@@ -410,9 +416,11 @@ export default function QuizMode() {
 
   return (
     <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
+      {/* 🛑 УДАЛЕН БЛОК УПРАВЛЕНИЯ И ЖИЗНЕЙ */}
+
       <div className="w-full max-w-lg mb-6 text-center">
         <div className="text-sm font-medium text-gray-600 mb-2 dark:text-gray-400">
-          Вопрос {index + 1} из {sessionList.length} (Батч)
+          Вопрос **{index + 1}** из **{sessionList.length}** (Батч)
           <span className="block text-xs text-gray-400 mt-1 dark:text-gray-500">
             Осталось всего невыученных: {totalRemaining}
           </span>
