@@ -5,9 +5,7 @@ import {
   markLearned,
   clearLessonProgress,
 } from "../../store/words/progressSlice";
-import {
-  selectLesson, // <-- selectLesson импортируется корректно
-} from "../../store/words/wordsSlice";
+import { selectLesson } from "../../store/words/wordsSlice";
 import { lessons } from "../../data";
 import StudyCompletionModal from "../../components/StudyCompletionModal";
 
@@ -16,15 +14,17 @@ import {
   HiArrowRight,
   HiCheck,
   HiOutlineRefresh,
+  HiVolumeUp,
+  HiVolumeOff,
 } from "react-icons/hi";
-import AudioPlayer from "../../components/AudioPlayer";
+
 import LessonComplete from "../../components/LessonComplete";
 
-const MAX_SESSION_SIZE = 15;
+const MAX_SESSION_SIZE = 7;
 
-// 💡 ВОССТАНОВЛЕННЫЕ КОНСТАНТЫ
 const LANG_STORAGE_KEY = "selectedTtsLang";
 const VOICE_STORAGE_KEY = "selectedTtsVoiceName";
+const AUTOPLAY_STORAGE_KEY = "flashcardsAutoPlay";
 
 const flipCardStyles = {
   perspective: "1000px",
@@ -60,10 +60,8 @@ export default function FlashCardsMode() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  // 1. ИСПРАВЛЕНИЕ: Доступ к navigation (list)
   const { list } = useSelector((state) => state.words.navigation);
 
-  // 2. ИСПРАВЛЕНИЕ: Доступ к progress (learned*)
   const {
     learnedFlashcards,
     learnedMatching,
@@ -78,12 +76,15 @@ export default function FlashCardsMode() {
   const [isSessionComplete, setIsSessionComplete] = useState(false);
   const [restartCount, setRestartCount] = useState(0);
 
-  // 💡 ВОССТАНОВЛЕНИЕ: Чтение активного языка
+  const [isAutoPlayEnabled, setIsAutoPlayEnabled] = useState(() => {
+    return localStorage.getItem(AUTOPLAY_STORAGE_KEY) === "true";
+  });
+
+  // --- ЛОГИКА TTS (Прослушивание) ---
   const activeLangCode = useMemo(() => {
     return localStorage.getItem(LANG_STORAGE_KEY) || "de";
   }, []);
 
-  // 💡 ВОССТАНОВЛЕНИЕ: Чтение сохраненного имени голоса
   const savedVoiceName = useMemo(() => {
     return localStorage.getItem(VOICE_STORAGE_KEY) || "";
   }, []);
@@ -97,20 +98,17 @@ export default function FlashCardsMode() {
     window.speechSynthesis.onvoiceschanged = loadVoices;
   }, []);
 
-  // 💡 ИСПРАВЛЕННЫЙ БЛОК: Логика поиска сохраненного голоса
   useEffect(() => {
     if (voices.length > 0) {
       let voiceFound = null;
 
       if (savedVoiceName) {
-        // 1. Ищем голос по сохраненному имени И активному языку
         voiceFound = voices.find(
           (v) => v.name === savedVoiceName && v.lang.startsWith(activeLangCode)
         );
       }
 
       if (!voiceFound) {
-        // 2. Если не нашли, ищем первый голос для активного языка (запасной вариант)
         const defaultVoice = voices.find((v) =>
           v.lang.startsWith(activeLangCode)
         );
@@ -119,10 +117,19 @@ export default function FlashCardsMode() {
       setSelectedWordVoice(voiceFound);
     }
   }, [voices, activeLangCode, savedVoiceName]);
-  // ----------------------------------------------------
+
+  const toggleAutoPlay = useCallback(() => {
+    setIsAutoPlayEnabled((prev) => {
+      const newState = !prev;
+      localStorage.setItem(AUTOPLAY_STORAGE_KEY, newState ? "true" : "false");
+      if (!newState) {
+        window.speechSynthesis.cancel();
+      }
+      return newState;
+    });
+  }, []);
 
   const getRemainingList = useCallback(() => {
-    // 3. ИСПРАВЛЕНИЕ: learned* массивы теперь берутся из `state.words.progress`
     const allLearnedWords = [
       ...learnedFlashcards,
       ...learnedMatching,
@@ -224,27 +231,24 @@ export default function FlashCardsMode() {
       )
     ) {
       dispatch(clearLessonProgress({ lessonId, mode: "flashcards" }));
-      navigate(`/lesson/${lessonId}`);
+      handleRestartSession();
     }
-  }, [dispatch, lessonId, navigate]);
+  }, [dispatch, lessonId, handleRestartSession]);
 
   const next = useCallback(() => {
     setFlipped(false);
-    // 🛑 ОСТАНОВКА: Отменяем озвучивание при переходе
     window.speechSynthesis.cancel();
     if (index < sessionList.length) setIndex((i) => i + 1);
   }, [sessionList.length, index]);
 
   const prev = useCallback(() => {
     setFlipped(false);
-    // 🛑 ОСТАНОВКА: Отменяем озвучивание при переходе
     window.speechSynthesis.cancel();
     setIndex((i) => (i - 1 >= 0 ? i - 1 : 0));
   }, []);
 
   const handleKnow = () => {
     if (current) {
-      // 🛑 ОСТАНОВКА: Отменяем озвучивание
       window.speechSynthesis.cancel();
       dispatch(markLearned({ word: current, mode: "flashcards" }));
       next();
@@ -252,7 +256,6 @@ export default function FlashCardsMode() {
   };
 
   const handleFlip = () => {
-    // 🛑 ОСТАНОВКА: Отменяем озвучивание при перевороте (чтобы избежать наложения)
     window.speechSynthesis.cancel();
     setFlipped((f) => !f);
   };
@@ -267,14 +270,30 @@ export default function FlashCardsMode() {
   const handleCloseModal = () => handleRestartSession();
 
   const handleGoBack = () => {
-    // 🛑 ОСТАНОВКА: Отменяем озвучивание при выходе
     window.speechSynthesis.cancel();
     navigate(`/lesson/${lessonId}`);
   };
 
-  // 💡 Динамическое получение текста слова для отображения и озвучивания
-  // wordText будет, например, 'der Gast' или 'der Job'
   const wordText = current?.[activeLangCode] || current?.de;
+
+  // 💡 АВТОМАТИЧЕСКОЕ ВОСПРОИЗВЕДЕНИЕ (С УСЛОВИЕМ)
+  useEffect(() => {
+    window.speechSynthesis.cancel();
+
+    if (current && selectedWordVoice && !flipped && isAutoPlayEnabled) {
+      try {
+        const utterance = new SpeechSynthesisUtterance(wordText);
+        utterance.lang = selectedWordVoice.lang;
+        utterance.voice = selectedWordVoice;
+        utterance.rate = 0.8;
+        window.speechSynthesis.speak(utterance);
+      } catch (e) {
+        console.error("TTS failed:", e);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, selectedWordVoice, flipped, isAutoPlayEnabled]);
+  // -------------------------------------------------------------------
 
   if (finalRemainingList.length === 0 && list && list.length > 0)
     return (
@@ -305,20 +324,56 @@ export default function FlashCardsMode() {
 
   return (
     <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
-      <div className="w-full max-w-sm mb-6 text-center">
-        <div className="text-sm font-medium text-gray-600 mb-2 dark:text-gray-400">
-          Прогресс **батча**: {index + 1} из {sessionList.length}
-          <span className="block text-xs text-gray-400 mt-1 dark:text-gray-500">
-            Осталось всего невыученных: {totalRemaining}
-          </span>
+      {/* 💡 НОВЫЙ КОНТЕЙНЕР ДЛЯ ПРОГРЕССА И КНОПКИ УПРАВЛЕНИЯ */}
+      <div className="w-full max-w-sm mb-6">
+        {/* 1. КНОПКА ВКЛ/ВЫКЛ АВТОВОСПРОИЗВЕДЕНИЯ (СЛЕВА) */}
+        <div className="flex justify-between items-center mb-4">
+          <button
+            onClick={toggleAutoPlay}
+            className={`p-2 rounded-lg text-sm shadow-md transition duration-150 flex items-center ${
+              isAutoPlayEnabled
+                ? "bg-sky-500 text-white hover:bg-sky-600"
+                : "bg-gray-300 text-gray-800 hover:bg-gray-400 dark:bg-gray-700 dark:text-gray-50 dark:hover:bg-gray-600"
+            }`}
+            title={
+              isAutoPlayEnabled
+                ? "Отключить автовоспроизведение"
+                : "Включить автовоспроизведение"
+            }
+          >
+            {isAutoPlayEnabled ? (
+              <HiVolumeUp className="w-5 h-5" />
+            ) : (
+              <HiVolumeOff className="w-5 h-5" />
+            )}
+            <span className="ml-2 font-semibold hidden sm:inline">
+              {isAutoPlayEnabled ? "Авто Вкл" : "Авто Выкл"}
+            </span>
+          </button>
+
+          {/* Дополнительный элемент для выравнивания */}
+          <div className="text-xs text-gray-500 dark:text-gray-400">
+            {/* Можно добавить что-то еще, или оставить пустым */}
+          </div>
         </div>
-        <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
-          <div
-            className="bg-sky-500 h-2.5 rounded-full transition-all duration-300"
-            style={{ width: `${((index + 1) / sessionList.length) * 100}%` }}
-          ></div>
+
+        {/* 2. ИНДИКАТОР ПРОГРЕССА */}
+        <div className="w-full text-center">
+          <div className="text-sm font-medium text-gray-600 mb-2 dark:text-gray-400">
+            Прогресс **батча**: {index + 1} из {sessionList.length}
+            <span className="block text-xs text-gray-400 mt-1 dark:text-gray-500">
+              Осталось всего невыученных: {totalRemaining}
+            </span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+            <div
+              className="bg-sky-500 h-2.5 rounded-full transition-all duration-300"
+              style={{ width: `${((index + 1) / sessionList.length) * 100}%` }}
+            ></div>
+          </div>
         </div>
       </div>
+      {/* ---------------------------------------------------- */}
 
       <div
         style={flipCardStyles}
@@ -336,18 +391,6 @@ export default function FlashCardsMode() {
             className="bg-sky-500 text-white shadow-xl flex-col"
           >
             <span className="text-4xl font-bold mb-4">{wordText}</span>
-
-            <AudioPlayer
-              textToSpeak={wordText}
-              lang={
-                // 💡 Используем язык из голоса, если он есть, иначе активный код
-                selectedWordVoice?.lang ||
-                `${activeLangCode}-${activeLangCode.toUpperCase()}`
-              }
-              voice={selectedWordVoice}
-              className="!text-white !bg-sky-600 hover:!bg-sky-700 p-3 rounded-full"
-              title={`Прослушать ${wordText} (${activeLangCode.toUpperCase()})`}
-            />
           </div>
 
           <div

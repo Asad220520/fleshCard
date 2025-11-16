@@ -8,25 +8,21 @@ import {
 import { selectLesson } from "../../store/words/wordsSlice";
 import { lessons } from "../../data";
 
-// ❗ ИМПОРТЫ ДЛЯ ЖИЗНЕЙ И ТАЙМЕРА
+// ❗ ИМПОРТЫ ДЛЯ ЖИЗНЕЙ И ТАЙМЕРА (Оставлены для логики, но удалены из UI)
 import { loseLife, resetLives } from "../../store/lives/livesSlice";
 import {
   setGameOver,
   clearGameOver,
 } from "../../store/gameState/gameStateSlice";
 
-import {
-  HiCheckCircle,
-  HiChevronRight,
-  HiArrowLeft,
-  HiClock,
-} from "react-icons/hi";
+import { HiChevronRight, HiClock } from "react-icons/hi"; // HiArrowLeft удален
 import LessonComplete from "../../components/LessonComplete";
 
-const CHUNK_SIZE = 5;
-const MAX_LIVES = 3; // Используйте ту же константу, что и в QuizMode
+// КОНСТАНТЫ
+const CHUNK_SIZE = 5; // Размер батча
+const MAX_LIVES = 3;
 
-// --- ФУНКЦИЯ ФОРМАТИРОВАНИЯ ВРЕМЕНИ (нужна для экрана ожидания) ---
+// --- ФУНКЦИЯ ФОРМАТИРОВАНИЯ ВРЕМЕНИ ---
 const formatTime = (seconds) => {
   const min = Math.floor(seconds / 60);
   const sec = seconds % 60;
@@ -40,34 +36,44 @@ export default function MatchingMode() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  // ✅ REDUX СОСТОЯНИЯ (ДОБАВЛЕНЫ ЖИЗНИ И GAME STATE)
+  // ✅ REDUX СОСТОЯНИЯ
   const currentLives = useSelector((state) => state.lives.count);
   const { gameOverTimestamp, cooldownDuration } = useSelector(
     (state) => state.gameState
   );
 
   const { list } = useSelector((state) => state.words.navigation);
-  const { learnedMatching } = useSelector((state) => state.words.progress);
 
-  const [round, setRound] = useState(0);
+  // ❗ ИМПОРТ ВСЕХ ПРОГРЕССОВ ДЛЯ ЕДИНОЙ ЛОГИКИ ФИЛЬТРАЦИИ
+  const {
+    learnedFlashcards,
+    learnedMatching,
+    learnedQuiz,
+    learnedWriting,
+    learnedSentencePuzzle,
+  } = useSelector((state) => state.words.progress);
+
+  // ❗ ИЗМЕНЕННЫЕ СОСТОЯНИЯ ДЛЯ ЛОГИКИ БАТЧА
+  const [index, setIndex] = useState(0);
   const [chunk, setChunk] = useState([]);
+  const [wordsToReview, setWordsToReview] = useState([]);
+  const [isSessionComplete, setIsSessionComplete] = useState(false);
+
   const [left, setLeft] = useState([]);
   const [right, setRight] = useState([]);
   const [selectedLeft, setSelectedLeft] = useState(null);
   const [matched, setMatched] = useState([]);
   const [incorrectRight, setIncorrectRight] = useState(null);
-  const [timeLeft, setTimeLeft] = useState(0); // Оставшееся время для таймера
+  const [timeLeft, setTimeLeft] = useState(0);
 
-  // --- ЛОГИКА ТАЙМЕРА И GAME OVER (Копируется из QuizMode) ---
+  // --- ЛОГИКА ТАЙМЕРА И GAME OVER ---
 
-  // 1. Установка временной метки при проигрыше
   useEffect(() => {
     if (currentLives <= 0 && !gameOverTimestamp) {
       dispatch(setGameOver({ timestamp: Date.now() }));
     }
   }, [currentLives, gameOverTimestamp, dispatch]);
 
-  // 2. Логика отсчета таймера
   useEffect(() => {
     let interval;
     if (gameOverTimestamp) {
@@ -76,9 +82,8 @@ export default function MatchingMode() {
         const remaining = cooldownDuration - elapsed;
 
         if (remaining <= 0) {
-          // Время истекло: сбрасываем состояние Game Over и восстанавливаем жизни
           dispatch(clearGameOver());
-          dispatch(resetLives()); // Восстанавливаем жизни
+          dispatch(resetLives());
           setTimeLeft(0);
           clearInterval(interval);
           return;
@@ -96,40 +101,96 @@ export default function MatchingMode() {
     return () => clearInterval(interval);
   }, [gameOverTimestamp, cooldownDuration, dispatch]);
 
-  // 3. ФУНКЦИЯ ПОКУПКИ (для перенаправления с экрана ожидания)
   const handlePurchasePremium = () => {
-    // Перенаправляем пользователя на страницу оформления покупки,
-    // передавая ID урока для возврата
     navigate(`/checkout/restore-lives/${lessonId}`);
   };
 
-  // --- Расчет пула слов ---
+  // --- Расчет пула слов (ОБЪЕДИНЕННАЯ ЛОГИКА) ---
 
   const getRemainingList = useCallback(() => {
+    // Объединяем прогресс со всех режимов для строгого отбора
+    const allLearnedWords = [
+      ...learnedFlashcards,
+      ...learnedMatching,
+      ...learnedQuiz,
+      ...learnedWriting,
+      ...(learnedSentencePuzzle || []),
+    ];
+
     const learnedSet = new Set();
-    // ❗ ФИЛЬТРАЦИЯ: Используем learnedMatching для этого режима
-    learnedMatching.forEach((w) => learnedSet.add(`${w.de}-${w.lessonId}`));
+    allLearnedWords.forEach((w) => learnedSet.add(`${w.de}-${w.lessonId}`));
 
     return (
       list?.filter((word) => {
         const key = `${word.de}-${word.lessonId}`;
+        // Фильтруем, используя объединенный Set
         return word.lessonId === lessonId && !learnedSet.has(key);
       }) || []
     );
-  }, [list, learnedMatching, lessonId]);
+  }, [
+    list,
+    learnedFlashcards,
+    learnedMatching,
+    learnedQuiz,
+    learnedWriting,
+    learnedSentencePuzzle,
+    lessonId,
+  ]);
 
-  const remainingList = useMemo(() => getRemainingList(), [getRemainingList]);
+  const allRemainingList = useMemo(
+    () => getRemainingList(),
+    [getRemainingList]
+  );
 
-  const chunks = useMemo(() => {
-    const lessonChunks = [];
-    for (let i = 0; i < remainingList.length; i += CHUNK_SIZE) {
-      lessonChunks.push(remainingList.slice(i, i + CHUNK_SIZE));
+  const allLessonWords = useMemo(
+    () => list?.filter((w) => w.lessonId === lessonId) || [],
+    [list, lessonId]
+  );
+
+  const totalWordsInLesson = allLessonWords.length;
+  const totalCompleted = totalWordsInLesson - allRemainingList.length;
+
+  // --- ЛОГИКА ЗАГРУЗКИ БАТЧА ---
+
+  const loadNextBatch = useCallback(() => {
+    const reviewBatch = wordsToReview;
+    const needNewWords = CHUNK_SIZE - reviewBatch.length;
+
+    const remainingForNewBatch = allRemainingList.filter(
+      (word) => !reviewBatch.some((r) => r.de === word.de)
+    );
+
+    const newWordsBatch = remainingForNewBatch.slice(0, needNewWords);
+
+    const nextChunk = [...reviewBatch, ...newWordsBatch].sort(
+      () => Math.random() - 0.5
+    );
+
+    if (nextChunk.length > 0) {
+      setChunk(nextChunk);
+      setLeft([...nextChunk].sort(() => Math.random() - 0.5));
+      setRight([...nextChunk].sort(() => Math.random() - 0.5));
+
+      setIsSessionComplete(false);
+      setWordsToReview([]);
+      setMatched([]);
+      setSelectedLeft(null);
+      setIncorrectRight(null);
+      setIndex((prev) => prev + 1);
+    } else if (reviewBatch.length === 0 && remainingForNewBatch.length === 0) {
+      setIsSessionComplete(true);
     }
-    return lessonChunks;
-  }, [remainingList]);
+  }, [allRemainingList, wordsToReview]);
 
-  const totalWordsInLesson = list.filter((w) => w.lessonId === lessonId).length;
-  const totalCompleted = totalWordsInLesson - remainingList.length;
+  // 💡 handleRestartSession теперь использует loadNextBatch для инициализации
+  const handleRestartSession = useCallback(() => {
+    setIsSessionComplete(false);
+    setWordsToReview([]);
+    setIndex(0); // Сбрасываем индекс батча
+
+    // ❗ Самый чистый способ: просто вызываем loadNextBatch
+    loadNextBatch();
+  }, [loadNextBatch]); // Зависит от loadNextBatch
 
   // --- Эффекты загрузки и подготовки данных ---
 
@@ -140,37 +201,15 @@ export default function MatchingMode() {
   }, [list, dispatch, lessonId]);
 
   useEffect(() => {
-    if (round >= chunks.length && chunks.length > 0) {
-      setRound(0);
+    if (allRemainingList.length > 0 && chunk.length === 0 && index === 0) {
+      loadNextBatch();
     }
-  }, [round, chunks.length]);
-
-  const loadRound = useCallback(() => {
-    if (remainingList.length === 0) return;
-    if (round >= chunks.length && chunks.length > 0) return;
-
-    const current = chunks[round] || [];
-    setChunk(current);
-
-    const shuffledLeft = [...current].sort(() => Math.random() - 0.5);
-    const shuffledRight = [...current].sort(() => Math.random() - 0.5);
-
-    setLeft(shuffledLeft);
-    setRight(shuffledRight);
-
-    setMatched([]);
-    setSelectedLeft(null);
-    setIncorrectRight(null);
-  }, [round, chunks, remainingList.length]);
-
-  useEffect(() => {
-    loadRound();
-  }, [loadRound]);
+  }, [allRemainingList, loadNextBatch, chunk.length, index]);
 
   // --- Обработчики кликов и навигации ---
 
   const handleLeftSelect = (word) => {
-    if (matched.includes(word.de)) return;
+    if (matched.includes(word.de) || currentLives <= 0) return;
 
     if (selectedLeft?.de === word.de) {
       setSelectedLeft(null);
@@ -181,21 +220,27 @@ export default function MatchingMode() {
   };
 
   const handleRightSelect = (word) => {
-    // ❗ Если игра окончена, не позволяем взаимодействовать
-    if (currentLives <= 0) return;
-
-    if (!selectedLeft || matched.includes(word.de)) return;
+    if (currentLives <= 0 || !selectedLeft || matched.includes(word.de)) return;
 
     if (word.de === selectedLeft.de) {
-      // Верное совпадение
+      // ✅ Верное совпадение
       setMatched((m) => [...m, word.de]);
       setIncorrectRight(null);
       setSelectedLeft(null);
     } else {
-      // ❌ Неверное совпадение: ТЕРЯЕМ ЖИЗНЬ
+      // ❌ Неверное совпадение: ТЕРЯЕМ ЖИЗНЬ И ДОБАВЛЯЕМ В ПОВТОРЕНИЕ
       if (currentLives > 0) {
         dispatch(loseLife());
       }
+
+      const wordToReview = chunk.find((w) => w.de === selectedLeft.de);
+      if (
+        wordToReview &&
+        !wordsToReview.some((w) => w.de === wordToReview.de)
+      ) {
+        setWordsToReview((prev) => [...prev, wordToReview]);
+      }
+
       setIncorrectRight(word.de);
       setTimeout(() => setIncorrectRight(null), 700);
     }
@@ -203,6 +248,7 @@ export default function MatchingMode() {
 
   const handleGoBack = () => navigate(`/lesson/${lessonId}`);
 
+  // ❗ ИСПРАВЛЕНА: Теперь вызывает handleRestartSession для немедленной перезагрузки
   const handleRepeatLesson = useCallback(() => {
     if (
       window.confirm(
@@ -210,23 +256,30 @@ export default function MatchingMode() {
       )
     ) {
       dispatch(clearLessonProgress({ lessonId, mode: "matching" }));
-      handleGoBack();
+      dispatch(resetLives());
+      handleRestartSession(); // 💡 Немедленный старт новой сессии
     }
-  }, [dispatch, lessonId, handleGoBack]);
+  }, [dispatch, lessonId, handleRestartSession]);
 
-  // --- Переход к следующему раунду ---
+  // --- Переход к следующему батчу ---
 
   useEffect(() => {
+    // 🟢 Если текущий чанк завершен (все слова сопоставлены)
     if (chunk.length > 0 && matched.length === chunk.length) {
+      // ❗ Выполняем MarkLearned в Redux
       chunk.forEach((word) => {
-        dispatch(markLearned({ word: word, mode: "matching" }));
+        if (!wordsToReview.some((w) => w.de === word.de)) {
+          dispatch(markLearned({ word: word, mode: "matching" }));
+        }
       });
 
+      // ❗ Используем небольшую задержку, чтобы дать Redux обновиться,
+      // прежде чем проверять totalNextWords в UI завершения сессии.
       setTimeout(() => {
-        setRound((r) => r + 1);
-      }, 0);
+        setIsSessionComplete(true);
+      }, 300);
     }
-  }, [matched, chunk, dispatch]);
+  }, [matched, chunk, dispatch, wordsToReview]);
 
   // ❗ ПРОВЕРКА GAME OVER И ТАЙМЕРА (ЭКРАН ОЖИДАНИЯ)
   if (currentLives <= 0 && gameOverTimestamp) {
@@ -246,7 +299,7 @@ export default function MatchingMode() {
 
           <p className="mb-4">Или приобретите безлимит (Premium):</p>
           <button
-            onClick={handlePurchasePremium} // ❗ ВЫЗОВ ФУНКЦИИ ПЕРЕНАПРАВЛЕНИЯ
+            onClick={handlePurchasePremium}
             className="w-full sm:w-auto px-6 py-3 bg-indigo-600 text-white rounded-xl shadow-md font-bold hover:bg-indigo-700 transition duration-150"
           >
             Купить безлимит / Восстановить мгновенно
@@ -263,7 +316,14 @@ export default function MatchingMode() {
     }
   }
 
-  if (totalCompleted === totalWordsInLesson && totalWordsInLesson > 0) {
+  const nextRemaining = allRemainingList.length;
+
+  // Экран завершения урока (Проверяем, что не осталось невыученных слов)
+  if (
+    nextRemaining === 0 &&
+    totalWordsInLesson > 0 &&
+    wordsToReview.length === 0
+  ) {
     return (
       <LessonComplete
         lessonId={lessonId}
@@ -273,22 +333,81 @@ export default function MatchingMode() {
     );
   }
 
-  if (totalWordsInLesson === 0) {
+  // 🟢 ЭКРАН ЗАВЕРШЕНИЯ СЕССИИ (БАТЧА)
+  if (isSessionComplete) {
+    const totalNextWords = nextRemaining + wordsToReview.length;
+
+    // ❗ ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА, ЕСЛИ totalNextWords ВДРУГ ОКАЗЫВАЕТСЯ 0
+    if (totalNextWords <= 0 && totalWordsInLesson > 0) {
+      // Если все слова выучены, но UI еще не обновился, перенаправляем на LessonComplete
+      return (
+        <LessonComplete
+          lessonId={lessonId}
+          onGoBack={handleGoBack}
+          onRepeat={handleRepeatLesson}
+        />
+      );
+    }
+
     return (
-      <div className="p-6 text-gray-500 text-center dark:bg-gray-900 dark:text-gray-400 min-h-screen">
-        Загрузка урока...
+      <div className="p-12 text-center text-gray-800 dark:text-gray-50 bg-gray-50 min-h-[50vh] dark:bg-gray-900 transition-colors duration-300 w-full max-w-lg mx-auto rounded-xl shadow-lg mt-10">
+        <h2 className="text-3xl font-extrabold text-purple-600 dark:text-purple-400 mb-4">
+          Сессия {index} завершена!
+        </h2>
+
+        {wordsToReview.length > 0 && (
+          <p className="text-red-500 font-bold mb-4">
+            {wordsToReview.length} слов(а) будут повторены в следующем батче.
+          </p>
+        )}
+
+        {totalNextWords > 0 ? (
+          <>
+            <p className="mb-6 font-semibold">
+              Осталось слов (включая повтор): {totalNextWords}
+            </p>
+            <button
+              onClick={loadNextBatch}
+              className="w-full sm:w-auto px-6 py-3 bg-purple-600 text-white rounded-xl shadow-md font-bold hover:bg-purple-700 transition duration-150 flex items-center justify-center mx-auto"
+            >
+              <HiChevronRight className="w-5 h-5 mr-2" />
+              Начать следующий батч
+            </button>
+            <button
+              onClick={handleRestartSession}
+              className="w-full sm:w-auto mt-3 px-6 py-3 bg-gray-300 text-gray-800 rounded-xl font-semibold hover:bg-gray-400 transition duration-150 dark:bg-gray-700 dark:text-gray-50 dark:hover:bg-gray-600 flex items-center justify-center mx-auto"
+            >
+              <HiClock className="w-5 h-5 mr-2" />
+              Повторить текущие слова
+            </button>
+          </>
+        ) : (
+          <p className="text-xl font-bold text-green-600 dark:text-green-400 mb-6">
+            Поздравляем! Вы выучили все слова в этом режиме.
+          </p>
+        )}
       </div>
     );
   }
 
-  if (!chunk.length && chunks.length > 0) return null;
+  // Загрузка
+  if (chunk.length === 0) {
+    return (
+      <div className="p-6 text-gray-500 text-center dark:bg-gray-900 dark:text-gray-400 min-h-screen">
+        Загрузка или переключение батча...
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
+      {/* 🛑 УДАЛЕН БЛОК УПРАВЛЕНИЯ И ИНДИКАТОР ЖИЗНЕЙ */}
+
       {/* Прогресс */}
       <div className="w-full max-w-lg mb-8 bg-white p-4 rounded-xl shadow-md border border-gray-100 dark:bg-gray-800 dark:shadow-xl dark:border-gray-700">
         <h2 className="text-sm font-semibold text-gray-700 mb-2 dark:text-gray-300">
-          Прогресс: Раунд {round + 1} из {chunks.length || 1}
+          Прогресс: Батч {index} ({matched.length} из {chunk.length}{" "}
+          сопоставлено)
         </h2>
 
         {/* Индикатор прогресса раунда */}
@@ -298,26 +417,20 @@ export default function MatchingMode() {
             style={{
               width: `${(matched.length / (chunk.length || 1)) * 100}%`,
             }}
-            title={`Совпало ${matched.length} из ${chunk.length} в раунде`}
+            title={`Совпало ${matched.length} из ${chunk.length} в батче`}
           ></div>
         </div>
 
-        {/* Общий прогресс урока */}
+        {/* 💡 ОБЩИЙ ПРОГРЕСС УРОКА (Теперь согласован с Quiz/Flashcards) */}
         <div className="mt-3 text-xs text-gray-500 flex justify-between dark:text-gray-400">
-          <span>
-            Выучено: {totalCompleted} из {totalWordsInLesson}
-          </span>
-          <span>Осталось в пуле: {remainingList.length}</span>
+          <span>Осталось всего невыученных: {nextRemaining}</span>
         </div>
       </div>
 
       {/* Контейнер для колонок */}
-      <div className="w-full max-w-lg flex gap-4 sm:gap-8 mt-4">
+      <div className="w-full max-w-lg flex gap-4 sm:gap-8 m">
         {/* Колонка 1: Немецкие слова (Левая) */}
         <div className="flex-1 flex flex-col gap-3 p-3 bg-white rounded-xl shadow-lg border border-gray-100 dark:bg-gray-800 dark:shadow-xl dark:border-gray-700">
-          <h3 className="text-lg font-bold text-purple-600 mb-2 dark:text-purple-400">
-            Немецкий (Wort)
-          </h3>
           {left.map((w) => {
             const isMatched = matched.includes(w.de);
             const isSelected = selectedLeft?.de === w.de;
@@ -335,7 +448,7 @@ export default function MatchingMode() {
             return (
               <button
                 key={w.de + "left"}
-                disabled={isMatched || currentLives <= 0} // ❗ ДЕАКТИВАЦИЯ ПРИ ПРОИГРЫШЕ
+                disabled={isMatched || currentLives <= 0}
                 onClick={() => handleLeftSelect(w)}
                 className={`p-3 rounded-lg text-lg font-medium text-center transition duration-150 transform ${cls}`}
               >
@@ -352,9 +465,6 @@ export default function MatchingMode() {
 
         {/* Колонка 2: Русские слова (Правая) */}
         <div className="flex-1 flex flex-col gap-3 p-3 bg-white rounded-xl shadow-lg border border-gray-100 dark:bg-gray-800 dark:shadow-xl dark:border-gray-700">
-          <h3 className="text-lg font-bold text-sky-600 mb-2 dark:text-sky-400">
-            Русский (Перевод)
-          </h3>
           {right.map((w) => {
             const isMatched = matched.includes(w.de);
             const isIncorrect = incorrectRight === w.de;
@@ -375,7 +485,7 @@ export default function MatchingMode() {
             return (
               <button
                 key={w.de + "right"}
-                disabled={isMatched || !selectedLeft || currentLives <= 0} // ❗ ДЕАКТИВАЦИЯ ПРИ ПРОИГРЫШЕ
+                disabled={isMatched || !selectedLeft || currentLives <= 0}
                 onClick={() => handleRightSelect(w)}
                 className={`p-3 rounded-lg text-lg font-medium text-center transition duration-150 ${cls}`}
               >
