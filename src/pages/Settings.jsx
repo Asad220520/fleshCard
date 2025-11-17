@@ -167,7 +167,7 @@ export default function Settings() {
   };
 
   return (
-    <div className="p-4 max-w-lg mx-auto dark:bg-gray-900 min-h-screen">
+    <div className="p-4 max-w-lg mx-auto dark:bg-gray-900">
       {/* Настройка Темы */}
       <div className="bg-white p-4 rounded-xl shadow-md flex items-center justify-between dark:bg-gray-800 mb-4">
         <span className="text-lg font-medium text-gray-700 dark:text-gray-300">

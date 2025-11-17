@@ -102,7 +102,7 @@ export default function Profile() {
   // --------------------------------------------------------
 
   return (
-    <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-screen dark:bg-gray-900 transition-colors duration-300">
+    <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
       {/* Карточка профиля */}
       <div className="w-full max-w-lg bg-white p-6 rounded-xl shadow-2xl border border-gray-100 dark:bg-gray-800 dark:border-gray-700">
         {/* Аватар и имя */}

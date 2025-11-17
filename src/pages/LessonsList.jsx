@@ -424,7 +424,7 @@ export default function LessonsList() {
   return (
     <div
       ref={targetRefs.initial}
-      className="p-4 sm:p-6 min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300"
+      className="p-4 sm:p-6 bg-gray-50 dark:bg-gray-900 transition-colors duration-300"
     >
       {/* Кнопка добавления урока (fixed) */}
       <Link
