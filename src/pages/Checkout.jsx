@@ -10,7 +10,7 @@ import { HiCheckCircle } from "react-icons/hi";
 export default function Checkout() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { product, languageId, lessonId } = useParams();
+  const { product, lessonId } = useParams(); // Получаем ID урока для возврата
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -33,7 +33,7 @@ export default function Checkout() {
 
       // Автоматический возврат на экран урока через 1 секунду
       setTimeout(() => {
-        navigate(`/lessons-list/${languageId}/${lessonId}`);
+        navigate(`/lesson/${lessonId}`);
       }, 1000);
     }, 2000);
   };
@@ -41,9 +41,9 @@ export default function Checkout() {
   // Если покупка уже успешна, и мы попали на эту страницу (хотя не должны)
   useEffect(() => {
     if (isSuccess) {
-      navigate(`/lessons-list/${languageId}/${lessonId}`);
+      navigate(`/lesson/${lessonId}`);
     }
-  }, [isSuccess, navigate, languageId, lessonId]);
+  }, [isSuccess, navigate, lessonId]);
 
   if (isSuccess) {
     return (

@@ -81,6 +81,12 @@ export default function LearnedWords() {
   // --- ОСНОВНОЙ РЕНДЕРИНГ: Список уроков с выученными словами ---
   return (
     <div className="p-4 sm:p-6 flex flex-col items-center w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
+      {/* Заголовок */}
+      <h1 className="text-3xl font-extrabold text-gray-800 mb-8 flex items-center dark:text-gray-50">
+        <HiOutlineAcademicCap className="w-8 h-8 mr-2 text-green-600 dark:text-green-400" />
+        Мои **выученные слова**
+      </h1>
+
       <div className="w-full max-w-lg flex flex-col gap-4">
         {lessonIds.map((lessonId) => {
           // Дополнительная защита, хотя благодаря reduce здесь не должно быть undefined

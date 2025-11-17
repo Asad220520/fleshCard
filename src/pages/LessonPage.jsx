@@ -108,7 +108,7 @@ const actions = [
 ];
 
 export default function LessonPage() {
-  const { languageId, lessonId } = useParams();
+  const { lessonId } = useParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const [loading, setLoading] = useState(true);
@@ -154,11 +154,7 @@ export default function LessonPage() {
         {infoAction && (
           // 💡 ИСПОЛЬЗУЕМ: styles.border для первой карточки
           <button
-            onClick={() =>
-              navigate(
-                `/lessons-list/${languageId}/${lessonId}/${infoAction.path}`
-              )
-            }
+            onClick={() => navigate(`/lesson/${lessonId}/${infoAction.path}`)}
             className={`flex flex-col items-start p-5 bg-white rounded-xl shadow-lg transition duration-300 ease-in-out w-full mb-6 transform hover:scale-[1.01] dark:bg-gray-800 dark:shadow-xl dark:border-gray-600 ${colorClasses.gray.hoverBg} border-b-4 ${colorClasses.gray.border}`}
           >
             <infoAction.icon
@@ -183,11 +179,7 @@ export default function LessonPage() {
             return (
               <button
                 key={action.path}
-                onClick={() =>
-                  navigate(
-                    `/lessons-list/${languageId}/${lessonId}/${action.path}`
-                  )
-                }
+                onClick={() => navigate(`/lesson/${lessonId}/${action.path}`)}
                 className={`flex flex-col items-start p-5 bg-white rounded-xl shadow-md transition duration-300 ease-in-out transform hover:scale-[1.01] dark:bg-gray-800 dark:shadow-xl dark:border-gray-600 ${styles.hoverBg} border-b-4 ${styles.border}`}
               >
                 <action.icon className={`w-8 h-8 mb-2 ${styles.icon}`} />

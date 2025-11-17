@@ -42,7 +42,7 @@ const ALL_MODES = [
  * Включает отображение примеров предложений (exde, exru).
  */
 export default function ListWords() {
-  const { languageId, lessonId } = useParams();
+  const { lessonId } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -142,6 +142,8 @@ export default function ListWords() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lessonId, dispatch]);
 
+  // --- Обработчики действий ---
+
   /** Переключает статус слова между "выучено" (везде) и "не выучено" (везде). */
   const handleToggleLearned = (word, isLearnedInAnyMode) => {
     const wordData = {
@@ -162,6 +164,14 @@ export default function ListWords() {
       dispatch(markMasterLearned({ word: wordData }));
     }
   };
+
+  /** Возврат на главную страницу урока */
+  const handleGoBack = () => {
+    navigate(`/lesson/${lessonId}`);
+  };
+
+  // --- UI Рендеринг ---
+
   // 1. 💡 Проверяем существование урока по данным из localStorage
   if (!allLessonData[lessonId])
     return (

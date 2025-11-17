@@ -15,19 +15,3 @@
 .rotate-y-180 {
   transform: rotateY(180deg);
 }
-
-
-@keyframes fade-slide {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -10px);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, 0);
-  }
-}
-
-.animate-fade-slide {
-  animation: fade-slide 0.25s ease-out;
-}

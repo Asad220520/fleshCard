@@ -32,7 +32,7 @@ const formatTime = (seconds) => {
 };
 
 export default function MatchingMode() {
-  const { languageId, lessonId } = useParams();
+  const { lessonId } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -246,8 +246,7 @@ export default function MatchingMode() {
     }
   };
 
-  const handleGoBack = () =>
-    navigate(`/lessons-list/${languageId}/${lessonId}`);
+  const handleGoBack = () => navigate(`/lesson/${lessonId}`);
 
   // ❗ ИСПРАВЛЕНА: Теперь вызывает handleRestartSession для немедленной перезагрузки
   const handleRepeatLesson = useCallback(() => {

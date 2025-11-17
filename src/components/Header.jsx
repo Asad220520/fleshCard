@@ -1,8 +1,10 @@
 import React from "react";
 // Импорт react-router-dom остается
-import { useNavigate, useLocation, Link, useParams } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 // ❗ Новые импорты для Redux
 import { useSelector, useDispatch } from "react-redux";
+// ❗ Импортируем действие для возможного использования (например, для отладки или сброса)
+// import { resetLives } from './livesSlice'; // Не обязательно в этом Header, но полезно знать
 
 // =================================================================
 // 1. ИНЛАЙН SVG ИКОНКИ (остаются без изменений)
@@ -47,19 +49,48 @@ const IconHome = (props) => (
 );
 
 // 💡 Константа максимального количества жизней, используемая в Redux Store
+// Для доступа к ней в компонентах, лучше вынести ее в отдельный файл
+// или получать из Redux Store, если это динамическое значение.
+// Сейчас возьмем ее из слайса:
 const DEFAULT_MAX_LIVES = 3;
 
+// =================================================================
+// 2. УДАЛЯЕМ/КОММЕНТИРУЕМ CONTEXT API
+// =================================================================
+/*
+// 💡 Дефолтное значение для контекста для предотвращения ошибки TypeError.
+const defaultGameContextValue = {
+  lives: DEFAULT_MAX_LIVES,
+  MAX_LIVES: DEFAULT_MAX_LIVES,
+  decreaseLives: () => {},
+  resetLives: () => {},
+  score: 0,
+  setScore: () => {},
+};
+
+const GameContext = createContext(defaultGameContextValue);
+export const useGameContext = () => {
+  return useContext(GameContext);
+};
+
+export const GameProvider = ({ children }) => {
+  // ... код Context API
+};
+*/
 // =================================================================
 // 3. КОМПОНЕНТ HEADER (теперь использует Redux Toolkit)
 // =================================================================
 
 function Header() {
+  // 💡 ИСПОЛЬЗУЕМ REDUX: Получаем текущее количество жизней и максимальное
+  // напрямую из Redux Store, используя имя 'lives', которое мы дали в store.js
   const lives = useSelector((state) => state.lives.count);
   const MAX_LIVES = useSelector((state) => state.lives.maxLives);
+  // Если вы не храните maxLives в стейте, используйте константу DEFAULT_MAX_LIVES
 
   const navigate = useNavigate();
-  // const { languageId } = useParams(); // <-- Больше не нужно!
   const location = useLocation();
+  // const dispatch = useDispatch(); // Используется, если нужно вызывать действия (например, сброс)
 
   // Функция для отрисовки сердец (индикатор жизней)
   const renderHearts = () => {
@@ -82,45 +113,16 @@ function Header() {
   // Определяем, должен ли отображаться стрелка "Назад"
   const showBackButton = location.pathname !== "/";
 
-  // ИСПРАВЛЕНО: Извлекаем ID языка из URL-пути
+  // Простое отображение заголовка в центре
   const getHeaderTitle = () => {
     if (location.pathname === "/") return "WordMaster";
-
-    const pathSegments = location.pathname
-      .split("/")
-      .filter((segment) => segment); // ['lessons-list', 'italian'] или ['lesson', 'german', 'flashcards']
-
-    // 1. Обрабатываем маршруты, где ID языка является вторым сегментом
-    if (
-      pathSegments.length >= 2 &&
-      (pathSegments[0] === "lessons-list" || pathSegments[0] === "lesson")
-    ) {
-      const languageId = pathSegments[1];
-      // Проверяем, что ID языка существует и не является именем режима (например, 'flashcards')
-      if (languageId && !ALL_MODES.includes(languageId)) {
-        return languageId.toUpperCase();
-      }
-    }
-
-    // 2. Обрабатываем фиксированные маршруты
+    if (location.pathname.includes("lesson")) return "Урок";
     if (location.pathname === "/learned") return "Мои Слова";
     if (location.pathname === "/profile") return "Профиль";
     if (location.pathname === "/settings") return "Настройки";
     if (location.pathname === "/add-lesson") return "Новый Урок";
-
-    // 3. Заголовок по умолчанию
     return "WordMaster";
   };
-
-  // Добавляем ALL_MODES в компонент Header, чтобы getHeaderTitle мог его использовать.
-  // Это позволит избежать отображения 'FLASHCARDS' или 'MATCHING' в заголовке, если они являются вторым сегментом.
-  const ALL_MODES = [
-    "flashcards",
-    "matching",
-    "quiz",
-    "writing",
-    "sentence_puzzle",
-  ];
 
   return (
     <header className="sticky top-0 w-full bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-md z-40 transition-colors duration-300">
@@ -129,10 +131,7 @@ function Header() {
         <div className="flex items-center space-x-4 w-1/3 justify-start">
           {showBackButton ? (
             <button
-              onClick={() => {
-                if (window.history.length > 2) navigate(-1);
-                else navigate("/");
-              }}
+              onClick={() => navigate(-1)}
               className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500"
               aria-label="Назад"
               title="Назад"

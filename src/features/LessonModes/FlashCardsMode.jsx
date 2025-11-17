@@ -56,7 +56,7 @@ const flipCardFaceStyles = {
 };
 
 export default function FlashCardsMode() {
-  const { languageId, lessonId } = useParams();
+  const { lessonId } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -271,7 +271,7 @@ export default function FlashCardsMode() {
 
   const handleGoBack = () => {
     window.speechSynthesis.cancel();
-    navigate(`/lessons-list/${languageId}/${lessonId}`);
+    navigate(`/lesson/${lessonId}`);
   };
 
   const wordText = current?.[activeLangCode] || current?.de;

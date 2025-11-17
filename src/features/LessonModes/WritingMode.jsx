@@ -40,7 +40,7 @@ const ALL_MODES = [
 ];
 
 export default function WritingMode() {
-  const { languageId, lessonId } = useParams();
+  const { lessonId } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -202,7 +202,7 @@ export default function WritingMode() {
   };
 
   const handleGoBack = () => {
-    navigate(`/lessons-list/${languageId}/${lessonId}`);
+    navigate(`/lesson/${lessonId}`);
   };
 
   // 💡 ФУНКЦИЯ: Сброс прогресса ТОЛЬКО для WritingMode
