@@ -1,9 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useParams, useNavigate } from "react-router-dom";
-import {
-  markLearned,
-} from "../../store/words/progressSlice";
+import { markLearned } from "../../store/words/progressSlice";
 import {
   HiArrowLeft,
   HiLightBulb,
@@ -31,7 +29,7 @@ const TARGET_MODE = "sentence_puzzle";
  * Режим тренировки: Сборка предложения из перемешанных слов.
  */
 export default function SentencePuzzle() {
-  const { lessonId } = useParams();
+  const { languageId, lessonId } = useParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();
 
@@ -192,7 +190,7 @@ export default function SentencePuzzle() {
         // Если после обновления пул все еще пуст, завершаем урок.
         if (wordsWithExamples.length <= 1) {
           alert("Урок завершен!");
-          navigate(`/lesson/${lessonId}`);
+          navigate(`/lessons-list/${languageId}/${lessonId}`);
         } else {
           // Если Redux удалил слово, и остались другие, useEffect сам сбросит index на 0.
           setCurrentIndex((prev) => prev + 1);
@@ -222,7 +220,7 @@ export default function SentencePuzzle() {
           слова в этом режиме.
         </p>
         <button
-          onClick={() => navigate(`/lesson/${lessonId}`)}
+          onClick={() => navigate(`/lessons-list/${languageId}/${lessonId}`)}
           className="mt-4 px-4 py-2 bg-sky-500 text-white rounded-xl hover:bg-sky-600 transition"
         >
           ← К уроку

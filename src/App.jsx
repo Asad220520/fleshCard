@@ -2,7 +2,6 @@ import React from "react";
 import { Provider } from "react-redux";
 import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
 import MobileHeader from "./components/MobileHeader"; // <-- Импорт нижнего хедера
-import LessonsList from "./pages/LessonsList";
 import LearnedWords from "./pages/LearnedWords";
 import LessonWords from "./pages/LessonWords";
 
@@ -20,6 +19,8 @@ import AddLessonPage from "./pages/AddLessonPage.jsx";
 import Header from "./components/Header.jsx";
 import { store } from "./store/index.js";
 import Checkout from "./pages/Checkout.jsx";
+import LessonsList from "./pages/cart/LessonsList.jsx";
+import HomePage from "./pages/HomePage.jsx";
 
 export default function App() {
   return (
@@ -37,11 +38,18 @@ export default function App() {
           {/* pt-16 pb-[4.5rem] */}
           <main className="flex-grow  md:pb-0">
             <Routes>
-              <Route path="/" element={<LessonsList />} />
+              <Route path="/" element={<HomePage />} />
+              <Route
+                path="/lessons-list/:languageId"
+                element={<LessonsList />}
+              />
               <Route path="/learned" element={<LearnedWords />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/profile" element={<Profile />} />
-              <Route path="/add-lesson" element={<AddLessonPage />} />
+              <Route
+                path="/lessons-list"
+                element={<AddLessonPage />}
+              />
               <Route
                 path="/checkout/:product/:lessonId"
                 element={<Checkout />}
@@ -51,24 +59,33 @@ export default function App() {
                 element={<LessonWords />}
               />
               {/* Главная страница урока */}
-              <Route path="/lesson/:lessonId" element={<LessonPage />} />
+              <Route
+                path="/lessons-list/:languageId/:lessonId"
+                element={<LessonPage />}
+              />
               {/* Отдельные страницы режимов */}
               <Route
-                path="/lesson/:lessonId/flashcards"
+                path="/lessons-list/:languageId/:lessonId/flashcards"
                 element={<FlashCardsMode />}
               />
-              <Route path="/lesson/:lessonId/quiz" element={<QuizMode />} />
               <Route
-                path="/lesson/:lessonId/matching"
+                path="/lessons-list/:languageId/:lessonId/quiz"
+                element={<QuizMode />}
+              />
+              <Route
+                path="/lessons-list/:languageId/:lessonId/matching"
                 element={<MatchingMode />}
               />
               <Route
-                path="/lesson/:lessonId/writing"
+                path="/lessons-list/:languageId/:lessonId/writing"
                 element={<WritingMode />}
               />
-              <Route path="/lesson/:lessonId/words" element={<ListWords />} />
               <Route
-                path="/lesson/:lessonId/sentence-puzzle"
+                path="/lessons-list/:languageId/:lessonId/words"
+                element={<ListWords />}
+              />
+              <Route
+                path="/lessons-list/:languageId/:lessonId/sentence-puzzle"
                 element={<SentencePuzzle />}
               />
             </Routes>

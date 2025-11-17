@@ -39,7 +39,7 @@ const formatTime = (seconds) => {
 };
 
 export default function QuizMode() {
-  const { lessonId } = useParams();
+  const { languageId, lessonId } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -305,7 +305,7 @@ export default function QuizMode() {
 
   const handleGoBack = () => {
     window.speechSynthesis.cancel();
-    navigate(`/lesson/${lessonId}`);
+    navigate(`/lessons-list/${languageId}/${lessonId}`);
   };
 
   // ❗ ПРОВЕРКА GAME OVER И ТАЙМЕРА (ЭКРАН ОЖИДАНИЯ)

@@ -42,7 +42,7 @@ const ALL_MODES = [
  * Включает отображение примеров предложений (exde, exru).
  */
 export default function ListWords() {
-  const { lessonId } = useParams();
+  const { languageId, lessonId } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -142,8 +142,6 @@ export default function ListWords() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lessonId, dispatch]);
 
-  // --- Обработчики действий ---
-
   /** Переключает статус слова между "выучено" (везде) и "не выучено" (везде). */
   const handleToggleLearned = (word, isLearnedInAnyMode) => {
     const wordData = {
@@ -164,14 +162,6 @@ export default function ListWords() {
       dispatch(markMasterLearned({ word: wordData }));
     }
   };
-
-  /** Возврат на главную страницу урока */
-  const handleGoBack = () => {
-    navigate(`/lesson/${lessonId}`);
-  };
-
-  // --- UI Рендеринг ---
-
   // 1. 💡 Проверяем существование урока по данным из localStorage
   if (!allLessonData[lessonId])
     return (
@@ -204,30 +194,6 @@ export default function ListWords() {
   // 3. Основной вид
   return (
     <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
-      {/* Заголовок и Навигация */}
-      <div className="w-full max-w-lg mb-6 flex justify-between items-center">
-        <button
-          onClick={handleGoBack}
-          className="flex items-center text-sky-700 hover:text-sky-800 transition font-semibold dark:text-sky-400 dark:hover:text-sky-300"
-        >
-          <HiArrowLeft className="w-6 h-6 mr-1" />
-          <span className="hidden sm:inline">К уроку</span>
-        </button>
-        <div className="flex items-center text-lg sm:text-2xl font-extrabold text-gray-800 dark:text-gray-50">
-          <HiBookOpen className="w-6 h-6 mr-2 text-sky-600 dark:text-sky-400" />
-          <span>Слова: {lessonId.toUpperCase()}</span>
-        </div>
-        <div className="w-16"></div> {/* Для выравнивания */}
-      </div>
-
-      {/* Инструкция */}
-      <p className="w-full max-w-lg mb-4 text-sm text-gray-600 text-center dark:text-gray-400">
-        {words.length} слов в уроке. Нажмите на значок справа, чтобы отметить
-        слово как выученное/невыученное. Этот список является{" "}
-        <span className="font-bold">Мастер-списком</span>: статус
-        распространяется <span className="font-bold">на все режимы</span>.
-      </p>
-
       {/* Список слов */}
       <div className="grid grid-cols-1 gap-4 w-full max-w-lg">
         {words.map((word) => {
