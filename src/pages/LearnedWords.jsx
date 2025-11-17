@@ -80,7 +80,7 @@ export default function LearnedWords() {
 
   // --- ОСНОВНОЙ РЕНДЕРИНГ: Список уроков с выученными словами ---
   return (
-    <div className="p-4 sm:p-6 flex flex-col items-center w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
+    <div className="p-4 sm:p-6 flex flex-col items-center w-full bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
       <div className="w-full max-w-lg flex flex-col gap-4">
         {lessonIds.map((lessonId) => {
           // Дополнительная защита, хотя благодаря reduce здесь не должно быть undefined
