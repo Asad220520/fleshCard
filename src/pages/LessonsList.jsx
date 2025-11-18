@@ -11,7 +11,6 @@ import {
   HiPlus,
   HiTrash,
   HiX,
-  HiOutlineChevronRight,
   HiOutlineDownload,
   HiDotsVertical,
   HiOutlineGlobeAlt,
@@ -520,7 +519,6 @@ const LanguageFolderView = ({
                   </div>
                 </div>
               </div>
-              <HiOutlineChevronRight className="w-6 h-6 text-gray-400 dark:text-gray-500" />
             </div>
           </div>
         );
