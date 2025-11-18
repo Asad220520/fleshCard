@@ -1,4 +1,4 @@
-// store/words/index.js - ИСПРАВЛЕННЫЙ КОД
+// store/words/index.js
 
 import { combineReducers } from "@reduxjs/toolkit";
 

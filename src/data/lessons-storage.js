@@ -1,3 +1,5 @@
+// src/data/lessons-storage.js
+
 // Загружаем уроки из LocalStorage
 export function loadLessons() {
   const data = localStorage.getItem("userLessons");

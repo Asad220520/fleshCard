@@ -1,16 +1,13 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useParams, Link, useNavigate } from "react-router-dom";
-// 💡 ИСПРАВЛЕНИЕ 1: Импортируем markMasterLearned И removeLearned
+
 import {
-  markLearned, // Оставим на всякий случай, хотя не используется напрямую
-  markMasterLearned, // <-- ИМПОРТИРОВАН
-  removeLearned, // <-- ИМПОРТИРОВАН
-  clearLessonProgress,
+  markMasterLearned,
+  removeLearned,
 } from "../../store/words/progressSlice";
 import { selectLesson } from "../../store/words/wordsSlice";
-import { loadLessons } from "../../data/lessons-storage"; // <--- Путь должен быть верным!
-import { lessons } from "../../data"; // Предполагаемый импорт, если используется
+import { loadLessons } from "../../data/lessons-storage";
 
 import AudioPlayer from "../../components/AudioPlayer";
 
@@ -18,41 +15,33 @@ import AudioPlayer from "../../components/AudioPlayer";
 import {
   HiCheckCircle,
   HiArrowLeft,
-  HiBookOpen,
   HiEyeOff,
   HiOutlineCheckCircle,
 } from "react-icons/hi";
 
-// 💡 КОНСТАНТЫ: Ключи для чтения глобальных настроек
-const LANG_STORAGE_KEY = "selectedTtsLang";
+// 💡 КОНСТАНТЫ:
+// const LANG_STORAGE_KEY = "selectedTtsLang"; // 🔴 Удалено. Больше не используется.
 const VOICE_STORAGE_KEY = "selectedTtsVoiceName";
-
-// 💡 КОНСТАНТА: Список всех режимов для удаления (при "не выучено")
 const ALL_MODES = [
   "flashcards",
   "matching",
   "quiz",
   "writing",
-  "sentence_puzzle", // Включаем новый режим
+  "sentence_puzzle",
 ];
 
-/**
- * Страница, отображающая ПОЛНЫЙ список слов для текущего урока,
- * с возможностью озвучки и отметки статуса (выучено/не выучено).
- * Включает отображение примеров предложений (exde, exru).
- */
 export default function ListWords() {
   const { lessonId } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  // 💡 СОСТОЯНИЕ ДЛЯ ХРАНЕНИЯ ВСЕХ УРОКОВ
   const [allLessonData, setAllLessonData] = useState({});
 
-  // 💡 ИСПРАВЛЕНИЕ 2: Корректный доступ к вложенному состоянию 'navigation' и 'progress'
-  const { list } = useSelector((state) => state.words.navigation);
+  // 1. 💡 ИЗВЛЕКАЕМ ЯЗЫК УРОКА ИЗ REDUX
+  const { list, currentLessonLang } = useSelector(
+    (state) => state.words.navigation
+  );
 
-  // 💡 ИСПРАВЛЕНИЕ 3: Корректный доступ к вложенному состоянию 'progress'
   const {
     learnedFlashcards,
     learnedMatching,
@@ -61,19 +50,17 @@ export default function ListWords() {
     learnedSentencePuzzle,
   } = useSelector((state) => state.words.progress);
 
-  // Слова для отображения: полный список из Redux Store
   const words = list?.filter((w) => w.lessonId === lessonId) || [];
 
-  // 1. 💡 ЧТЕНИЕ АКТИВНОГО ЯЗЫКА И ИМЕНИ ГОЛОСА ИЗ LOCALSTORAGE
+  // 2. 💥 ИСПОЛЬЗУЕМ ЯЗЫК ИЗ REDUX для TTS
   const activeLangCode = useMemo(() => {
-    return localStorage.getItem(LANG_STORAGE_KEY) || "de";
-  }, []);
+    return currentLessonLang || "de"; // Используем язык из Redux, или 'de' по умолчанию
+  }, [currentLessonLang]); // Зависимость от языка урока
 
   const savedVoiceName = useMemo(() => {
     return localStorage.getItem(VOICE_STORAGE_KEY) || "";
   }, []);
 
-  // 2. 💡 СОСТОЯНИЕ ГОЛОСОВ TTS
   const [voices, setVoices] = useState([]);
   const [selectedWordVoice, setSelectedWordVoice] = useState(null);
 
@@ -83,18 +70,20 @@ export default function ListWords() {
     window.speechSynthesis.onvoiceschanged = loadVoices;
   }, []);
 
-  // 3. 💡 ПОИСК СОХРАНЕННОГО ГОЛОСА (Логика выбора голоса)
+  // 3. 💡 ОБНОВЛЕНИЕ ГОЛОСА ПРИ ИЗМЕНЕНИИ activeLangCode
   useEffect(() => {
     if (voices.length > 0) {
       let voiceFound = null;
 
       if (savedVoiceName) {
+        // Ищем сохраненный голос, соответствующий активному языку
         voiceFound = voices.find(
           (v) => v.name === savedVoiceName && v.lang.startsWith(activeLangCode)
         );
       }
 
       if (!voiceFound) {
+        // Ищем первый попавшийся голос для активного языка
         const defaultVoice = voices.find((v) =>
           v.lang.startsWith(activeLangCode)
         );
@@ -103,7 +92,7 @@ export default function ListWords() {
 
       setSelectedWordVoice(voiceFound);
     }
-  }, [voices, activeLangCode, savedVoiceName]);
+  }, [voices, activeLangCode, savedVoiceName]); // Зависимость от activeLangCode
 
   // 💡 ВЫЧИСЛЯЕМ УНИВЕРСАЛЬНЫЙ НАБОР ВЫУЧЕННЫХ СЛОВ (Set)
   const learnedSet = useMemo(() => {
@@ -115,7 +104,7 @@ export default function ListWords() {
       ...(learnedSentencePuzzle || []),
     ];
     const set = new Set();
-    // Создаем уникальный ключ для всех выученных слов
+    // Используем уникальный ключ, основанный на содержании (de + lessonId)
     allLearnedWords.forEach((w) => set.add(`${w.de}-${w.lessonId}`));
     return set;
   }, [
@@ -128,15 +117,21 @@ export default function ListWords() {
 
   // --- Загрузка данных урока при обновлении ---
   useEffect(() => {
-    // 1. Читаем ВСЕ уроки из localStorage
     const savedLessons = loadLessons();
-    setAllLessonData(savedLessons); // Сохраняем для проверки существования
+    setAllLessonData(savedLessons);
 
-    const currentLessonWords = savedLessons[lessonId];
+    const currentLessonData = savedLessons[lessonId];
 
-    // 2. Если в Redux список слов пуст, НО урок существует в хранилище, загружаем его в Redux.
-    if ((!words || words.length === 0) && currentLessonWords) {
-      dispatch(selectLesson({ words: currentLessonWords, lessonId }));
+    // Если в Redux список слов пуст, НО урок существует в хранилище, загружаем его в Redux.
+    if ((!words || words.length === 0) && currentLessonData?.cards) {
+      // 4. 💡 При загрузке урока в Redux, также передаем его язык
+      dispatch(
+        selectLesson({
+          words: currentLessonData.cards,
+          lessonId,
+          lang: currentLessonData.lang, // Передаем язык урока
+        })
+      );
     }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -148,19 +143,18 @@ export default function ListWords() {
   const handleToggleLearned = (word, isLearnedInAnyMode) => {
     const wordData = {
       ...word,
-      // lessonId уже внутри, mode не нужен
+      // lessonId уже внутри
     };
 
     if (isLearnedInAnyMode) {
-      // 💡 Если выучено, удаляем ИЗ ВСЕХ РЕЖИМОВ
-      // NOTE: removeLearned требует 'mode' в payload
+      // Если выучено, удаляем ИЗ ВСЕХ РЕЖИМОВ
       ALL_MODES.forEach((mode) => {
         dispatch(
           removeLearned({ de: wordData.de, lessonId: wordData.lessonId, mode })
         );
       });
     } else {
-      // 💡 Если не выучено, используем мастер-действие, которое сохранит во ВСЕ режимы
+      // Используем мастер-действие, которое сохранит во ВСЕ режимы
       dispatch(markMasterLearned({ word: wordData }));
     }
   };
@@ -172,18 +166,24 @@ export default function ListWords() {
 
   // --- UI Рендеринг ---
 
-  // 1. 💡 Проверяем существование урока по данным из localStorage
+  // 1. Проверяем существование урока по данным из localStorage
   if (!allLessonData[lessonId])
     return (
       <div className="p-6 text-red-500 text-center dark:bg-gray-900 dark:text-red-400 min-h-screen">
         Урок не найден.
+        <button
+          onClick={() => navigate("/")}
+          className="mt-4 inline-block px-4 py-2 bg-sky-500 text-white rounded-xl hover:bg-sky-600 transition font-semibold dark:bg-sky-600 dark:hover:bg-sky-700"
+        >
+          ← К списку уроков
+        </button>
       </div>
     );
 
   // 2. Если урок найден в localStorage, но Redux еще не успел загрузить слова
   if (words.length === 0)
     return (
-      <div className="p-12 text-center text-gray-500 bg-gray-50 min-h-[50vh] dark:bg-gray-900 dark:bg-gray-900">
+      <div className="p-12 text-center text-gray-500 bg-gray-50 min-h-[50vh] dark:bg-gray-900">
         <div className="p-8 bg-white rounded-xl shadow-lg border-2 border-dashed border-gray-300 w-full max-w-lg mx-auto dark:bg-gray-800 dark:border-gray-700 dark:shadow-xl">
           <h2 className="text-xl font-bold text-gray-700 dark:text-gray-50">
             Загрузка слов...
@@ -191,31 +191,35 @@ export default function ListWords() {
           <p className="mt-2 text-gray-600 dark:text-gray-300">
             Подождите, пока данные урока {lessonId.toUpperCase()} загрузятся.
           </p>
-          <Link
-            to={`/lesson/${lessonId}`}
+          <button
+            onClick={handleGoBack}
             className="mt-4 inline-block px-4 py-2 bg-sky-500 text-white rounded-xl hover:bg-sky-600 transition font-semibold dark:bg-sky-600 dark:hover:bg-sky-700"
           >
             ← К уроку {lessonId.toUpperCase()}
-          </Link>
+          </button>
         </div>
       </div>
     );
 
   // 3. Основной вид
   return (
-    <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
+    <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
       {/* Список слов */}
       <div className="grid grid-cols-1 gap-4 w-full max-w-lg">
-        {words.map((word) => {
+        {words.map((word, index) => {
+          // 💡 ДОБАВЛЕН 'index'
           // 💡 ИСПОЛЬЗУЕМ: Проверяем, выучено ли слово в ЛЮБОМ режиме (Мастер-статус)
-          const wordKey = `${word.de}-${word.lessonId}`;
-          const isLearnedInAnyMode = learnedSet.has(wordKey);
+          const wordCheckKey = `${word.de}-${word.lessonId}`;
+          const isLearnedInAnyMode = learnedSet.has(wordCheckKey);
+
+          // 🛑 ИСПРАВЛЕНИЕ КЛЮЧА: Добавляем 'index' для гарантированной уникальности
+          const wordKey = `${word.de}-${word.lessonId}-${index}`;
 
           return (
             <div
-              key={wordKey}
+              key={wordKey} // <-- ИСПОЛЬЗУЕМ УНИКАЛЬНЫЙ КЛЮЧ
               className={`p-4 rounded-xl shadow-md flex justify-between items-start transition duration-150 border-2 ${
-                isLearnedInAnyMode // Используем общий статус для стиля
+                isLearnedInAnyMode
                   ? "bg-green-50 border-green-500 hover:shadow-lg dark:bg-green-900 dark:border-green-600 dark:shadow-xl"
                   : "bg-white border-gray-200 hover:border-sky-300 dark:bg-gray-800 dark:border-gray-700 dark:hover:border-sky-500 dark:shadow-xl"
               }`}
@@ -225,10 +229,10 @@ export default function ListWords() {
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center space-x-3">
                     {/* Статус слова */}
-                    {isLearnedInAnyMode ? ( // Используем общий статус
+                    {isLearnedInAnyMode ? (
                       <HiCheckCircle
                         className="w-6 h-6 text-green-500 flex-shrink-0 dark:text-green-400"
-                        title="Выучено (в одном из режимов)"
+                        title="Выучено (во всех режимах)"
                       />
                     ) : (
                       <HiEyeOff
@@ -241,12 +245,12 @@ export default function ListWords() {
                     <div className="min-w-0">
                       <div className="font-bold text-lg text-gray-800 flex items-center dark:text-gray-50">
                         {word.de}
-                        {/* 🆕 СЛОВО: Используем activeLangCode, voice и стандартный rate=1.0 */}
                         <AudioPlayer
                           textToSpeak={word.de}
+                          // 5. 💡 ИСПОЛЬЗУЕМ activeLangCode (который берется из Redux)
                           lang={activeLangCode}
                           voice={selectedWordVoice}
-                          rate={1.0} // Стандартная скорость
+                          rate={1.0}
                         />
                       </div>
                       <div className="text-gray-600 text-sm dark:text-gray-300">
@@ -264,12 +268,12 @@ export default function ListWords() {
                   {/* Немецкое предложение */}
                   <div className="text-base text-gray-700 dark:text-gray-200 flex items-center mb-1">
                     <span className="font-bold">{word.exde || "—"}</span>
-                    {/* 🆕 ПРЕДЛОЖЕНИЕ: Используем activeLangCode, voice и замедленный rate=0.8 */}
                     <AudioPlayer
                       textToSpeak={word.exde}
+                      // 6. 💡 ИСПОЛЬЗУЕМ activeLangCode (который берется из Redux)
                       lang={activeLangCode}
                       voice={selectedWordVoice}
-                      rate={0.8} // Замедленная скорость для длинного текста
+                      rate={0.8}
                     />
                   </div>
                   {/* Русское предложение */}
@@ -283,11 +287,10 @@ export default function ListWords() {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  // Используем isLearnedInAnyMode для решения о добавлении (марк мастер) / удалении (удаление из всех)
                   handleToggleLearned(word, isLearnedInAnyMode);
                 }}
                 className={`p-3 rounded-full transition flex-shrink-0 self-center ml-2 ${
-                  isLearnedInAnyMode // Используем мастер-статус для стиля кнопки
+                  isLearnedInAnyMode
                     ? "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-700 dark:text-green-200 dark:hover:bg-green-600"
                     : "bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-700 dark:text-sky-200 dark:hover:bg-sky-600"
                 }`}
@@ -297,7 +300,7 @@ export default function ListWords() {
                     : "Добавить в прогресс (во все режимы)"
                 }
               >
-                {/* Меняем иконку: если в мастер-статусе выучено, предлагаем "не выучить" (HiEyeOff), и наоборот */}
+                {/* Меняем иконку */}
                 {isLearnedInAnyMode ? (
                   <HiEyeOff className="w-6 h-6" />
                 ) : (

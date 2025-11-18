@@ -5,7 +5,7 @@ import {
   markLearned,
   clearLessonProgress,
 } from "../../store/words/progressSlice";
-import { selectLesson } from "../../store/words/wordsSlice";
+// import { selectLesson } from "../../store/words/wordsSlice"; // selectLesson обычно вызывается в LessonPage
 import { lessons } from "../../data";
 import {
   HiCheck,
@@ -26,7 +26,7 @@ import {
 // КОНСТАНТЫ
 const MAX_SESSION_SIZE = 15;
 // const MAX_LIVES = 3; // Не используется, так как жизни берутся из Redux
-const LANG_STORAGE_KEY = "selectedTtsLang";
+// const LANG_STORAGE_KEY = "selectedTtsLang"; // 🔴 Удалено. Больше не используется.
 const VOICE_STORAGE_KEY = "selectedTtsVoiceName";
 
 // --- ФУНКЦИЯ ФОРМАТИРОВАНИЯ ВРЕМЕНИ ---
@@ -49,7 +49,10 @@ export default function QuizMode() {
     (state) => state.gameState
   );
 
-  const { list } = useSelector((state) => state.words.navigation);
+  // 1. 💡 ИЗВЛЕКАЕМ ЯЗЫК УРОКА ИЗ REDUX
+  const { list, currentLessonLang } = useSelector(
+    (state) => state.words.navigation
+  );
   const { learnedQuiz } = useSelector((state) => state.words.progress);
 
   const [index, setIndex] = useState(0);
@@ -69,8 +72,9 @@ export default function QuizMode() {
 
   // --- ЛОГИКА TTS ---
   const activeLangCode = useMemo(() => {
-    return localStorage.getItem(LANG_STORAGE_KEY) || "de";
-  }, []);
+    // 2. 💥 ИСПОЛЬЗУЕМ ЯЗЫК ИЗ REDUX
+    return currentLessonLang || "de";
+  }, [currentLessonLang]); // Зависимость от языка урока
 
   const savedVoiceName = useMemo(() => {
     return localStorage.getItem(VOICE_STORAGE_KEY) || "";
@@ -85,6 +89,7 @@ export default function QuizMode() {
     window.speechSynthesis.onvoiceschanged = loadVoices;
   }, []);
 
+  // 3. 💡 ОБНОВЛЕНИЕ ГОЛОСА ПРИ ИЗМЕНЕНИИ activeLangCode
   useEffect(() => {
     if (voices.length > 0) {
       let voiceFound = null;
@@ -101,7 +106,7 @@ export default function QuizMode() {
       }
       setSelectedWordVoice(voiceFound);
     }
-  }, [voices, activeLangCode, savedVoiceName]);
+  }, [voices, activeLangCode, savedVoiceName]); // Зависимость от activeLangCode
 
   // --- ЛОГИКА ТАЙМЕРА И GAME OVER ---
 
@@ -204,11 +209,17 @@ export default function QuizMode() {
     }
   };
 
+  /* // 🔴 УДАЛЕНО: Этот useEffect больше не нужен, так как LessonPage вызывает selectLesson.
+  // Оставлю его закомментированным на случай, если вы хотите его восстановить 
+  // для прямой загрузки, но нужно будет передать 'lang'.
   useEffect(() => {
     if ((!list || list.length === 0) && lessons[lessonId]) {
+      // ❗ Если нужно загрузить урок здесь, необходимо получить 'lang' 
+      // из lessons[lessonId] и передать в selectLesson.
       dispatch(selectLesson({ words: lessons[lessonId], lessonId }));
     }
   }, [list, dispatch, lessonId]);
+  */
 
   useEffect(() => {
     if (allRemainingList.length > 0 && sessionList.length === 0) {
@@ -225,6 +236,8 @@ export default function QuizMode() {
     if (current && selectedWordVoice) {
       try {
         const utterance = new SpeechSynthesisUtterance(current.de);
+        // 4. 💡 Устанавливаем язык для воспроизведения, используя язык, найденный в голосе
+        // Это гарантирует, что используется язык, соответствующий lessonId
         utterance.lang = selectedWordVoice.lang;
         utterance.voice = selectedWordVoice;
         utterance.rate = 0.8;
@@ -440,7 +453,7 @@ export default function QuizMode() {
           </span>
           <AudioPlayer
             textToSpeak={current?.de}
-            lang={activeLangCode}
+            lang={activeLangCode} // 5. 💡 ИСПОЛЬЗУЕМ activeLangCode (который берется из Redux)
             voice={selectedWordVoice}
             className="p-3 bg-sky-500 hover:bg-sky-400 transition rounded-full flex-shrink-0"
             title="Прослушать слово снова"

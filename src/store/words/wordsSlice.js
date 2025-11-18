@@ -8,6 +8,8 @@ const wordsSlice = createSlice({
     list: [],
     index: 0,
     currentLessonId: null,
+    // 💡 ДОБАВЛЕНО: Язык текущего урока
+    currentLessonLang: null,
   },
   reducers: {
     nextCard: (state) => {
@@ -31,15 +33,28 @@ const wordsSlice = createSlice({
       }
     },
     selectLesson: (state, action) => {
-      const { words, lessonId } = action.payload;
-      state.list = (words || []).map((w) => ({ ...w, lessonId }));
+      // 💡 ИЗМЕНЕНО: Извлекаем 'lang'
+      const { words, lessonId, lang } = action.payload;
+
+      // 🟢 Защита: Извлекаем cards, если words - это объект { lang, cards }
+      const cardsToUse = words?.cards || words;
+
+      state.list = (Array.isArray(cardsToUse) ? cardsToUse : []).map((w) => ({
+        ...w,
+        lessonId,
+      }));
+
       state.currentLessonId = lessonId;
-      // Загружаем сохранённый индекс для урока
+      // 💡 СОХРАНЕНО: Язык урока
+      state.currentLessonLang = lang || null;
+
+      // 💡 Добавляем логику загрузки индекса, чтобы продолжить с последнего места
       const savedIndex = JSON.parse(
         localStorage.getItem(`index_${lessonId}`) || "0"
       );
       state.index = savedIndex;
     },
+
     saveIndex: (state, action) => {
       state.index = action.payload;
       if (state.currentLessonId) {

@@ -1,8 +1,8 @@
 import React from "react";
 import { Provider } from "react-redux";
 import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
-import MobileHeader from "./components/MobileHeader"; // <-- Импорт нижнего хедера
-import LessonsList from "./pages/LessonsList";
+import MobileHeader from "./components/MobileHeader";
+import LessonsList from "./pages/LessonsList"; // Компонент, который использует languageId
 import LearnedWords from "./pages/LearnedWords";
 import LessonWords from "./pages/LessonWords";
 
@@ -31,17 +31,39 @@ export default function App() {
           {/* 1. Верхний App Bar - Виден всегда */}
           <Header />
           {/* 2. Основной контент */}
-          {/* pt-16 компенсирует ВЕРХНИЙ хедер.
-             pb-[4.5rem] компенсирует НИЖНИЙ хедер (только на мобилке).
-             md:pb-0 убирает нижний отступ на десктопе. */}
-          {/* pt-16 pb-[4.5rem] */}
           <main className="flex-grow  md:pb-0">
             <Routes>
+              {/* 1. ГЛАВНАЯ СТРАНИЦА (/) */}
               <Route path="/" element={<LessonsList />} />
+
+              {/* 🟢 ДОБАВЛЕНО/ИСПРАВЛЕНО: Явный маршрут для /lessons-list */}
+              <Route path="/lessons-list" element={<LessonsList />} />
+
+              {/* 2. ФИЛЬТРАЦИЯ ПО ЯЗЫКУ: /lessons-list/de */}
+              <Route
+                path="/lessons-list/:languageId"
+                element={<LessonsList />}
+              />
+
+              {/* 3. СТРАНИЦА УРОКА: /lessons-list/de/moko */}
+              <Route
+                path="/lessons-list/:languageId/:lessonId"
+                element={<LessonPage />}
+              />
+
+              {/* 4. СТРАНИЦА УРОКА (без указания языка, если вы используете такой роутинг) */}
+              <Route path="/lesson/:lessonId" element={<LessonPage />} />
+
+              {/* ... (Остальные маршруты) */}
+
               <Route path="/learned" element={<LearnedWords />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/add-lesson" element={<AddLessonPage />} />
+              <Route
+                path="/add-lesson/:editLessonId"
+                element={<AddLessonPage />}
+              />
               <Route
                 path="/checkout/:product/:lessonId"
                 element={<Checkout />}
@@ -50,8 +72,7 @@ export default function App() {
                 path="/learned/lesson/:lessonId"
                 element={<LessonWords />}
               />
-              {/* Главная страница урока */}
-              <Route path="/lesson/:lessonId" element={<LessonPage />} />
+
               {/* Отдельные страницы режимов */}
               <Route
                 path="/lesson/:lessonId/flashcards"

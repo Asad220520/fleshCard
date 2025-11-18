@@ -5,7 +5,7 @@ import {
   markLearned,
   clearLessonProgress,
 } from "../../store/words/progressSlice";
-import { selectLesson } from "../../store/words/wordsSlice";
+// import { selectLesson } from "../../store/words/wordsSlice"; // Убрал, так как LessonPage уже диспатчит
 import { lessons } from "../../data";
 import StudyCompletionModal from "../../components/StudyCompletionModal";
 
@@ -22,10 +22,11 @@ import LessonComplete from "../../components/LessonComplete";
 
 const MAX_SESSION_SIZE = 7;
 
-const LANG_STORAGE_KEY = "selectedTtsLang";
+// const LANG_STORAGE_KEY = "selectedTtsLang"; // 🔴 Больше не используется напрямую
 const VOICE_STORAGE_KEY = "selectedTtsVoiceName";
 const AUTOPLAY_STORAGE_KEY = "flashcardsAutoPlay";
 
+// ... (flipCardStyles и flipCardInnerStyles остаются без изменений)
 const flipCardStyles = {
   perspective: "1000px",
   width: "100%",
@@ -60,7 +61,10 @@ export default function FlashCardsMode() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  const { list } = useSelector((state) => state.words.navigation);
+  // 1. 💡 ИЗВЛЕКАЕМ ЯЗЫК УРОКА ИЗ REDUX (путь: words -> navigation -> currentLessonLang)
+  const { list, currentLessonLang } = useSelector(
+    (state) => state.words.navigation
+  );
 
   const {
     learnedFlashcards,
@@ -82,8 +86,9 @@ export default function FlashCardsMode() {
 
   // --- ЛОГИКА TTS (Прослушивание) ---
   const activeLangCode = useMemo(() => {
-    return localStorage.getItem(LANG_STORAGE_KEY) || "de";
-  }, []);
+    // 2. 💥 ИСПОЛЬЗУЕМ ЯЗЫК ИЗ REDUX, а если его нет (редкий случай), берем 'de' по умолчанию.
+    return currentLessonLang || "de";
+  }, [currentLessonLang]); // Зависимость от языка урока
 
   const savedVoiceName = useMemo(() => {
     return localStorage.getItem(VOICE_STORAGE_KEY) || "";
@@ -98,17 +103,20 @@ export default function FlashCardsMode() {
     window.speechSynthesis.onvoiceschanged = loadVoices;
   }, []);
 
+  // 3. 💡 ОБНОВЛЕНИЕ ГОЛОСА ПРИ ИЗМЕНЕНИИ activeLangCode
   useEffect(() => {
     if (voices.length > 0) {
       let voiceFound = null;
 
       if (savedVoiceName) {
+        // Ищем сохраненный голос, соответствующий активному языку
         voiceFound = voices.find(
           (v) => v.name === savedVoiceName && v.lang.startsWith(activeLangCode)
         );
       }
 
       if (!voiceFound) {
+        // Ищем первый попавшийся голос для активного языка
         const defaultVoice = voices.find((v) =>
           v.lang.startsWith(activeLangCode)
         );
@@ -116,7 +124,7 @@ export default function FlashCardsMode() {
       }
       setSelectedWordVoice(voiceFound);
     }
-  }, [voices, activeLangCode, savedVoiceName]);
+  }, [voices, activeLangCode, savedVoiceName]); // activeLangCode теперь управляется Redux
 
   const toggleAutoPlay = useCallback(() => {
     setIsAutoPlayEnabled((prev) => {
@@ -164,11 +172,15 @@ export default function FlashCardsMode() {
 
   const current = sessionList[index];
 
+  // 🔴 УДАЛЕН НЕПРАВИЛЬНЫЙ ДИСПАТЧ:
+  // Мы предполагаем, что LessonPage уже диспатчил selectLesson с правильным языком.
+  /*
   useEffect(() => {
     if ((!list || list.length === 0) && lessons[lessonId]) {
       dispatch(selectLesson({ words: lessons[lessonId], lessonId }));
     }
   }, [list, dispatch, lessonId]);
+  */
 
   const loadNewBatch = useCallback(() => {
     const actualRemainingList = finalRemainingList;
@@ -274,6 +286,7 @@ export default function FlashCardsMode() {
     navigate(`/lesson/${lessonId}`);
   };
 
+  // 4. 💡 Используем активный язык для получения слова (хотя для TTS важен activeLangCode)
   const wordText = current?.[activeLangCode] || current?.de;
 
   // 💡 АВТОМАТИЧЕСКОЕ ВОСПРОИЗВЕДЕНИЕ (С УСЛОВИЕМ)
@@ -283,6 +296,8 @@ export default function FlashCardsMode() {
     if (current && selectedWordVoice && !flipped && isAutoPlayEnabled) {
       try {
         const utterance = new SpeechSynthesisUtterance(wordText);
+        // 5. 💡 Устанавливаем язык для воспроизведения, используя язык, найденный в голосе
+        // Это гарантирует, что используется язык, соответствующий lessonId
         utterance.lang = selectedWordVoice.lang;
         utterance.voice = selectedWordVoice;
         utterance.rate = 0.8;

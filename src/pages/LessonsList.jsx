@@ -1,8 +1,8 @@
-// LessonsList.jsx
-
 import { useSelector } from "react-redux";
-import { useState, useEffect, useRef, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+// ⚠️ Предполагается, что mockLessons теперь в новом формате: { moko: { lang: 'de', cards: [...] } }
+import { mockLessons } from "../data/mockLessons";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { loadLessons, saveLessons } from "../data/lessons-storage";
 import {
   HiOutlineBookOpen,
@@ -16,17 +16,38 @@ import {
   HiDotsVertical,
 } from "react-icons/hi";
 
-// ... (LessonMenu и TourTooltip остаются без изменений)
+// 💡 Глобальные константы
+const SUPPORTED_TTS_LANGS = [
+  "без TTS",
+  "de",
+  "en",
+  "ko",
+  "ar",
+  "es",
+  "fr",
+  "it",
+  "ja",
+  "ru",
+  "zh",
+];
+const LANG_STORAGE_KEY = "selectedTtsLang";
+const VOICE_STORAGE_KEY = "selectedTtsVoiceName";
+const TOUR_STORAGE_KEY = "hasSeenLessonsTour";
+
 // -----------------------------------------------------------
-// КОМПОНЕНТ КОНТЕКСТНОГО МЕНЮ
+// КОМПОНЕНТ КОНТЕКСТНОГО МЕНЮ (LessonMenu)
 // -----------------------------------------------------------
-const LessonMenu = ({ lessonId, onDelete, onExport, onClose }) => {
+const LessonMenu = ({ lessonId, onDelete, onExport, onEdit, onClose }) => {
   useEffect(() => {
-    // Закрывает меню при клике вне его
     const handleClickOutside = (event) => {
-      // Проверяем, был ли клик внутри самого LessonMenu (по id)
       const menuElement = document.getElementById(`menu-${lessonId}`);
-      if (menuElement && !menuElement.contains(event.target)) {
+      const dotsButton = document.querySelector(`[data-menu-id="${lessonId}"]`);
+
+      if (
+        menuElement &&
+        !menuElement.contains(event.target) &&
+        (!dotsButton || !dotsButton.contains(event.target))
+      ) {
         onClose();
       }
     };
@@ -37,10 +58,22 @@ const LessonMenu = ({ lessonId, onDelete, onExport, onClose }) => {
   return (
     <div
       id={`menu-${lessonId}`}
-      // 💡 Используем absolute/right-0/top-0 для позиционирования
       className="absolute top-10 right-0 z-30 w-40 bg-white dark:bg-gray-700 rounded-lg shadow-xl py-1 ring-1 ring-black ring-opacity-5 focus:outline-none"
       role="menu"
     >
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onEdit();
+          onClose();
+        }}
+        className="flex items-center w-full px-4 py-2 text-sm text-sky-600 dark:text-sky-400 hover:bg-gray-100 dark:hover:bg-gray-600"
+        role="menuitem"
+      >
+        <HiArrowRight className="w-5 h-5 mr-2 transform rotate-180" />
+        Изменить
+      </button>
+
       <button
         onClick={(e) => {
           e.stopPropagation();
@@ -68,14 +101,91 @@ const LessonMenu = ({ lessonId, onDelete, onExport, onClose }) => {
     </div>
   );
 };
+
+// -----------------------------------------------------------
+// КОМПОНЕНТ МОДАЛЬНОГО ОКНА: Выбор языка для нового урока (AddLessonLangModal)
+// -----------------------------------------------------------
+const AddLessonLangModal = ({ onClose, onLangSelected }) => {
+  const defaultLang = useMemo(() => {
+    const savedLang = localStorage.getItem(LANG_STORAGE_KEY);
+    return savedLang && SUPPORTED_TTS_LANGS.includes(savedLang)
+      ? savedLang
+      : SUPPORTED_TTS_LANGS[0];
+  }, []);
+
+  const [selectedLang, setSelectedLang] = useState(defaultLang);
+
+  const handleConfirm = () => {
+    if (selectedLang) {
+      onLangSelected(selectedLang);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/70 z-[200] flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-2xl max-w-sm w-full transition-all duration-300"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-xl font-bold text-sky-600 dark:text-sky-400 mb-4 flex items-center">
+          <HiPlus className="w-6 h-6 mr-2" />
+          Выберите язык для нового урока
+        </h3>
+
+        <p className="mb-4 text-gray-700 dark:text-gray-300">
+          Выберите основной язык, на котором вы будете изучать слова в новом
+          уроке.
+        </p>
+
+        <div className="mb-6">
+          <label
+            htmlFor="new-lesson-lang"
+            className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+          >
+            Язык:
+          </label>
+          <select
+            id="new-lesson-lang"
+            value={selectedLang}
+            onChange={(e) => setSelectedLang(e.target.value)}
+            className="w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-sky-500 focus:border-sky-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+          >
+            {SUPPORTED_TTS_LANGS.map((lang) => (
+              <option key={lang} value={lang}>
+                {lang.toUpperCase()}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex justify-between gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 p-3 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-xl text-gray-800 dark:text-gray-100 font-bold transition duration-200"
+          >
+            Отмена
+          </button>
+          <button
+            onClick={handleConfirm}
+            className="flex-1 p-3 bg-sky-600 hover:bg-sky-700 rounded-xl text-white font-bold transition duration-200 shadow-lg"
+          >
+            Продолжить
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 // -----------------------------------------------------------
 
-// --- КОМПОНЕНТ ПОДПИСАННОЙ ПОДСКАЗКИ (Tooltip) ---
+// --- КОМПОНЕНТ ПОДПИСАННОЙ ПОДСКАЗКИ (TourTooltip) ---
 const TourTooltip = ({ step, totalSteps, onNext, onSkip, targetRef }) => {
   const tooltipRef = useRef(null);
   const [position, setPosition] = useState({ top: 0, left: 0 });
 
-  // Шаги оставлены без изменений (все fixed для стабильности)
   const steps = [
     {
       title: "Добро пожаловать в WordMaster! 🚀",
@@ -93,19 +203,19 @@ const TourTooltip = ({ step, totalSteps, onNext, onSkip, targetRef }) => {
       title: "Карточка урока",
       text: "Каждый блок — это отдельный урок. Нажмите, чтобы открыть режимы тренировки.",
       positioning: "center-above",
-      isFixed: true,
+      isFixed: false,
     },
     {
       title: "Отслеживание прогресса",
       text: "Здесь вы видите, сколько слов вы уже выучили в этом уроке (0/2).",
       positioning: "center-above",
-      isFixed: true,
+      isFixed: false,
     },
     {
       title: "Меню урока",
       text: "Нажмите на эти три точки, чтобы увидеть опции: 'Удалить урок' или 'Экспорт'.",
-      positioning: "center-above", // Направим тултип на меню
-      isFixed: true,
+      positioning: "center-above",
+      isFixed: false,
     },
   ];
 
@@ -119,7 +229,6 @@ const TourTooltip = ({ step, totalSteps, onNext, onSkip, targetRef }) => {
     const tooltip = tooltipRef.current;
     let newPos = { top: 0, left: 0 };
 
-    // 1. Шаг 0: Всегда по центру экрана (Fixed)
     if (currentStep.positioning === "center") {
       newPos = {
         top: window.innerHeight / 2 - tooltip.offsetHeight / 2,
@@ -134,7 +243,6 @@ const TourTooltip = ({ step, totalSteps, onNext, onSkip, targetRef }) => {
     const targetElement = targetRef.current;
     let targetRect = targetElement.getBoundingClientRect();
 
-    // 2. Прокрутка элемента в видимую область, если он вне её
     if (
       targetRect.top < HEADER_HEIGHT ||
       targetRect.bottom > window.innerHeight
@@ -142,10 +250,8 @@ const TourTooltip = ({ step, totalSteps, onNext, onSkip, targetRef }) => {
       targetElement.scrollIntoView({ behavior: "smooth", block: "center" });
     }
 
-    // Обязательно пересчитываем позицию после прокрутки
     targetRect = targetElement.getBoundingClientRect();
 
-    // 3. Расчет позиции тултипа (Fixed)
     let finalTop = 0;
     let finalLeft = 0;
 
@@ -178,24 +284,16 @@ const TourTooltip = ({ step, totalSteps, onNext, onSkip, targetRef }) => {
     setPosition(newPos);
   }, [step, currentStep.positioning, targetRef]);
 
-  const overlayStyle = {
-    pointerEvents: "auto",
-  };
-
   const tooltipPositionClass = "fixed";
 
   return (
-    // Общий затемняющий фон (fixed)
     <div
       className="fixed inset-0 bg-black/70 z-[100] transition-opacity duration-300"
-      style={overlayStyle}
+      style={{ pointerEvents: "auto" }}
     >
-      {/* Сама подсказка */}
       <div
         ref={tooltipRef}
-        // 💡 Используем style для динамической установки top/left
         style={{ top: position.top, left: position.left }}
-        // 💡 Используем fixed, чтобы тултип не двигался при скролле
         className={`${tooltipPositionClass} w-full max-w-xs p-5 bg-white rounded-xl shadow-2xl z-[101] dark:bg-gray-800 transition-all duration-300`}
       >
         <button
@@ -239,20 +337,18 @@ const TourTooltip = ({ step, totalSteps, onNext, onSkip, targetRef }) => {
     </div>
   );
 };
-// --- КОНЕЦ КОМПОНЕНТА TOURTOOLTIP ---
+// -----------------------------------------------------------
 
 // -----------------------------------------------------------
-// ИСПРАВЛЕННАЯ ФУНКЦИЯ: getUniqueLearnedWords
-// Принимает объект progress (вместо всего wordsState)
+// ФУНКЦИЯ: getUniqueLearnedWords
 // -----------------------------------------------------------
 const getUniqueLearnedWords = (progressState) => {
-  // Деструктуризация для корректного доступа к массивам
   const {
     learnedFlashcards,
     learnedMatching,
     learnedQuiz,
     learnedWriting,
-    learnedSentencePuzzle, // Убедитесь, что новый режим добавлен
+    learnedSentencePuzzle,
   } = progressState;
 
   const allWords = [
@@ -260,49 +356,31 @@ const getUniqueLearnedWords = (progressState) => {
     ...learnedMatching,
     ...learnedQuiz,
     ...learnedWriting,
-    ...learnedSentencePuzzle, // Добавлен
+    ...(learnedSentencePuzzle || []), // 💡 Безопасное чтение
   ];
 
   const uniqueWordsMap = new Map();
   allWords.forEach((word) => {
-    const key = `${word.de}-${word.lessonId}`;
+    // Ключ должен быть максимально уникальным: слово + перевод + lessonId
+    const key = `${word.de}-${word.ru}-${word.lessonId}`;
     if (!uniqueWordsMap.has(key)) uniqueWordsMap.set(key, word);
   });
   return Array.from(uniqueWordsMap.values());
 };
 
-const mockLessons = {
-  moko: [
-    {
-      de: "der Gast",
-      ru: "гость",
-      exde: "Der Gast kommt heute Abend an.",
-      exru: "Гость прибывает сегодня вечером.",
-      distractors: ["Haus", "isst"],
-    },
-    {
-      de: "der Job",
-      ru: "работа",
-      exde: "Er sucht einen neuen Job in Berlin.",
-      exru: "Он ищет новую работу в Берлине.",
-      distractors: ["alt", "trinkt"],
-    },
-  ],
-};
-
-const TOUR_STORAGE_KEY = "hasSeenLessonsTour";
-
 // -----------------------------------------------------------
 // ГЛАВНЫЙ КОМПОНЕНТ LessonsList
 // -----------------------------------------------------------
 export default function LessonsList() {
-  // ИСПРАВЛЕНИЕ: Получаем только вложенный объект progress
+  const navigate = useNavigate();
   const progressState = useSelector((state) => state.words.progress);
 
   const [lessonsData, setLessonsData] = useState({});
   const [showTour, setShowTour] = useState(false);
   const [tourStep, setTourStep] = useState(0);
-  const [openMenuId, setOpenMenuId] = useState(null); // Состояние для открытого меню
+  const [openMenuId, setOpenMenuId] = useState(null);
+
+  const [showAddLessonModal, setShowAddLessonModal] = useState(false);
 
   const targetRefs = {
     initial: useRef(null),
@@ -317,22 +395,55 @@ export default function LessonsList() {
     { name: "addButton", ref: targetRefs.addButton, isFixed: true },
     { name: "mokoCard", ref: targetRefs.mokoCard, isFixed: false },
     { name: "mokoProgress", ref: targetRefs.mokoProgress, isFixed: false },
-    // Обновлен шаг для указания на меню
     { name: "mokoMenu", ref: targetRefs.mokoMenu, isFixed: false },
   ];
 
   useEffect(() => {
     let saved = loadLessons();
     const hasSeenTour = localStorage.getItem(TOUR_STORAGE_KEY);
+    let initialLessons = {};
+    let needsMigration = false;
 
+    // 1. ПЕРВАЯ ЗАГРУЗКА ИЛИ ПУСТОЙ LOCALSTORAGE: Используем новый mockLessons
     if (!saved || Object.keys(saved).length === 0) {
-      saveLessons(mockLessons);
-      saved = mockLessons;
+      // 🟢 ИСПРАВЛЕНО: Используем mockLessons напрямую, так как они уже в нужном формате
+      initialLessons = mockLessons;
+      saveLessons(initialLessons);
+      saved = initialLessons;
+
       if (!hasSeenTour) {
         setShowTour(true);
       }
-    } else if (!hasSeenTour) {
-      setShowTour(true);
+    } else {
+      // 2. МИГРАЦИЯ СТАРЫХ ДАННЫХ В LOCALSTORAGE
+      const migratedLessons = {};
+      for (const id in saved) {
+        // Если значением является массив, это старый формат
+        if (Array.isArray(saved[id])) {
+          migratedLessons[id] = {
+            lang: id === "moko" ? "de" : SUPPORTED_TTS_LANGS[0],
+            cards: saved[id],
+          };
+          needsMigration = true;
+        } else {
+          // Если это уже объект, сохраняем его, но гарантируем наличие 'cards' и 'lang'
+          migratedLessons[id] = {
+            ...saved[id],
+            cards: saved[id].cards || [],
+            lang: saved[id].lang || SUPPORTED_TTS_LANGS[0],
+          };
+        }
+      }
+
+      if (needsMigration) {
+        saveLessons(migratedLessons);
+        saved = migratedLessons;
+      }
+
+      // Если уроки уже есть, но тур не виден, показываем тур
+      if (!hasSeenTour) {
+        setShowTour(true);
+      }
     }
 
     setLessonsData(saved);
@@ -346,17 +457,30 @@ export default function LessonsList() {
   const handleNextStep = useCallback(() => {
     if (tourStep < tourSteps.length - 1) {
       setTourStep((s) => s + 1);
-      setOpenMenuId(null); // Закрываем меню при переходе к следующему шагу
+      setOpenMenuId(null);
     } else {
       handleTourComplete();
     }
   }, [tourStep, tourSteps.length, handleTourComplete]);
 
-  // ИСПОЛЬЗОВАНИЕ: Передаем progressState в функцию
-  const allUniqueLearned = getUniqueLearnedWords(progressState);
+  // Убедимся, что progressState.words существует, прежде чем вызывать getUniqueLearnedWords
+  const allUniqueLearned = useMemo(() => {
+    if (
+      !progressState ||
+      !Object.keys(progressState).some((key) =>
+        Array.isArray(progressState[key])
+      )
+    )
+      return [];
+    return getUniqueLearnedWords(progressState);
+  }, [progressState]);
 
   const getProgress = (lessonId) => {
-    const allWords = lessonsData[lessonId] ? lessonsData[lessonId].length : 0;
+    const lesson = lessonsData[lessonId];
+    // 🟢 ИСПРАВЛЕНИЕ: Безопасное чтение lesson.cards.length
+    const allWords = lesson && lesson.cards ? lesson.cards.length : 0;
+
+    // Фильтрация выученных слов по lessonId
     const learnedCount = allUniqueLearned.filter(
       (w) => w.lessonId === lessonId
     ).length;
@@ -369,8 +493,14 @@ export default function LessonsList() {
   };
 
   const handleDeleteLesson = (lessonId) => {
+    const lessonTitle = lessonsData[lessonId]?.lang
+      ? `${lessonId.toUpperCase()} (${lessonsData[
+          lessonId
+        ].lang.toUpperCase()})`
+      : lessonId;
+
     const confirmDelete = window.confirm(
-      `Вы уверены, что хотите удалить урок "${lessonId}"?`
+      `Вы уверены, что хотите удалить урок "${lessonTitle}"?`
     );
     if (!confirmDelete) return;
 
@@ -380,13 +510,17 @@ export default function LessonsList() {
     saveLessons(updatedLessons);
   };
 
-  // -----------------------------------------------------------
-  // НОВАЯ ФУНКЦИЯ: Экспорт урока
-  // -----------------------------------------------------------
-  const exportSingleLesson = (lessonId, cards) => {
+  const handleEditLesson = (lessonId) => {
+    const lessonLang = lessonsData[lessonId]?.lang;
+    navigate(`/add-lesson/${lessonId}`, { state: { ttsLang: lessonLang } });
+    setOpenMenuId(null);
+  };
+
+  const exportSingleLesson = (lessonId, lessonData) => {
     const exportData = {
       lessonId: lessonId,
-      cards: cards,
+      lang: lessonData.lang,
+      cards: lessonData.cards,
       meta: {
         app: "WordMaster Lesson Export",
         timestamp: new Date().toISOString(),
@@ -405,18 +539,34 @@ export default function LessonsList() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    // Добавим уведомление для пользователя
     console.log(`Урок "${lessonId}" экспортирован как .json файл.`);
     alert(`Урок "${lessonId}" успешно экспортирован! Файл скачан.`);
   };
-  // -----------------------------------------------------------
+
+  const handleCardClick = (lessonId) => {
+    const lessonLang = lessonsData[lessonId]?.lang;
+    navigate(`/lesson/${lessonId}`, { state: { ttsLang: lessonLang } });
+  };
+
+  const handleLangSelectAndNavigate = (selectedLang) => {
+    setShowAddLessonModal(false);
+
+    // 🔴 УДАЛЕНО: Сохранение в Local Storage (LANG_STORAGE_KEY)
+    // if (SUPPORTED_TTS_LANGS.includes(selectedLang)) {
+    //   localStorage.setItem(LANG_STORAGE_KEY, selectedLang);
+    //   localStorage.removeItem(VOICE_STORAGE_KEY);
+    // }
+
+    // Передаем выбранный язык как state для использования на AddLessonPage
+    // В Local Storage сохраняется только язык для следующего НОВОГО урока,
+    // но не здесь, чтобы не влиять на уже существующие уроки.
+    navigate("/add-lesson", { state: { ttsLang: selectedLang } });
+  };
 
   const lessonIds = Object.keys(lessonsData);
 
   const currentTargetRef = showTour ? tourSteps[tourStep].ref : null;
-  // 💡 Класс для элементов, которые должны быть выделены: relative + высокий z-index
   const highlightClasses = "relative z-[102]";
-  // 💡 Класс для иконки меню
   const highlightMenuClasses = "z-[102]";
 
   const isActive = (ref) => showTour && ref === currentTargetRef;
@@ -424,13 +574,14 @@ export default function LessonsList() {
   return (
     <div
       ref={targetRefs.initial}
-      className="p-4 sm:p-6 bg-gray-50 dark:bg-gray-900 transition-colors duration-300"
+      // 💡 Добавлен отступ снизу, чтобы скрыть кнопку добавления (HiPlus)
+      className="p-4 sm:p-6 pb-24 sm:pb-16 bg-gray-50 dark:bg-gray-900 transition-colors duration-300 min-h-screen"
     >
       {/* Кнопка добавления урока (fixed) */}
-      <Link
+      <button
         ref={targetRefs.addButton}
-        to="/add-lesson"
-        className={`fixed bottom-25 right-6 sm:bottom-26 sm:right-8 
+        onClick={() => setShowAddLessonModal(true)}
+        className={`fixed bottom-16 right-6 sm:bottom-8 sm:right-8 
              bg-sky-600 text-white w-14 h-14 flex items-center justify-center 
              rounded-full text-3xl font-light shadow-2xl 
              hover:bg-sky-700 active:scale-95 transition duration-150 add-lesson-button z-[102]`}
@@ -438,28 +589,29 @@ export default function LessonsList() {
         aria-label="Добавить новый урок"
       >
         <HiPlus className="w-8 h-8" />
-      </Link>
+      </button>
 
-      {/* ----------------------------------------------------------- */}
       {/* Сообщение-пояснение для пользователя о новых функциях */}
-      {/* ----------------------------------------------------------- */}
       {!localStorage.getItem(TOUR_STORAGE_KEY) && (
         <div className="max-w-4xl mx-auto p-4 mb-6 bg-blue-100 dark:bg-gray-700 rounded-lg text-blue-800 dark:text-blue-300 border border-blue-300">
           👋 **Добро пожаловать!** Обратите внимание: теперь в карточке каждого
-          урока есть **меню (три точки)**, где вы найдете опции **"Удалить
-          урок"** и **"Экспорт (JSON)"** для создания резервной копии слов.
+          урока есть **меню (три точки)**, где вы найдете опции **"Изменить"**,
+          **"Удалить урок"** и **"Экспорт (JSON)"** для создания резервной копии
+          слов.
         </div>
       )}
-      {/* ----------------------------------------------------------- */}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl mx-auto">
-        {lessonIds.map((lessonId, index) => {
+        {lessonIds.map((lessonId) => {
           const progress = getProgress(lessonId);
           const isComplete = progress.isComplete;
           const isMoko = lessonId === "moko";
+          const lesson = lessonsData[lessonId];
+          const lessonLang = lesson?.lang || "N/A";
+
+          if (!lesson) return null;
 
           return (
-            // 💡 Весь блок должен быть relative для позиционирования меню
             <div key={lessonId} className={`relative`}>
               {/* Кнопка меню (Три точки) */}
               <div
@@ -471,6 +623,7 @@ export default function LessonsList() {
                 }`}
               >
                 <button
+                  data-menu-id={lessonId}
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -487,17 +640,17 @@ export default function LessonsList() {
                   <LessonMenu
                     lessonId={lessonId}
                     onDelete={() => handleDeleteLesson(lessonId)}
-                    onExport={() =>
-                      exportSingleLesson(lessonId, lessonsData[lessonId])
-                    }
+                    onExport={() => exportSingleLesson(lessonId, lesson)}
+                    onEdit={() => handleEditLesson(lessonId)}
                     onClose={() => setOpenMenuId(null)}
                   />
                 )}
               </div>
 
-              <Link
+              {/* КАРТОЧКА УРОКА: div с onClick для прямой навигации */}
+              <div
                 ref={isMoko ? targetRefs.mokoCard : null}
-                to={`/lesson/${lessonId}`}
+                onClick={() => handleCardClick(lessonId)}
                 className={`
                   flex items-center justify-between
                   p-5 bg-white rounded-xl shadow-lg 
@@ -505,6 +658,7 @@ export default function LessonsList() {
                   transform hover:scale-[1.02] hover:shadow-xl
                   dark:bg-gray-800 dark:shadow-2xl dark:border-gray-700
                   border-l-4 
+                  cursor-pointer
                   ${
                     isComplete
                       ? "border-green-500 hover:border-green-600"
@@ -516,10 +670,11 @@ export default function LessonsList() {
                       : ""
                   } 
                 `}
+                aria-label={`Начать урок ${lessonId.toUpperCase()}`}
               >
                 <div className="flex items-center space-x-4">
                   <div
-                    className={`p-2 rounded-full ${
+                    className={`p-2 rounded-full flex-shrink-0 ${
                       isComplete
                         ? "bg-green-100 dark:bg-green-800"
                         : "bg-sky-100 dark:bg-sky-800"
@@ -534,10 +689,10 @@ export default function LessonsList() {
 
                   <div>
                     <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                      карточка {index + 1}
+                      Урок {lessonId.toUpperCase()}
                     </span>
                     <p className="text-lg font-semibold text-gray-800 dark:text-gray-50">
-                      {lessonId.toUpperCase()}
+                      Язык: {lessonLang.toUpperCase()}
                     </p>
 
                     <div
@@ -572,7 +727,7 @@ export default function LessonsList() {
                     </div>
                   </div>
                 </div>
-              </Link>
+              </div>
             </div>
           );
         })}
@@ -586,6 +741,14 @@ export default function LessonsList() {
           onNext={handleNextStep}
           onSkip={handleTourComplete}
           targetRef={currentTargetRef}
+        />
+      )}
+
+      {/* РЕНДЕРИНГ МОДАЛЬНОГО ОКНА ВЫБОРА ЯЗЫКА (для кнопки "+") */}
+      {showAddLessonModal && (
+        <AddLessonLangModal
+          onClose={() => setShowAddLessonModal(false)}
+          onLangSelected={handleLangSelectAndNavigate}
         />
       )}
     </div>
