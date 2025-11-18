@@ -245,13 +245,16 @@ export default function ListWords() {
                     <div className="min-w-0">
                       <div className="font-bold text-lg text-gray-800 flex items-center dark:text-gray-50">
                         {word.de}
-                        <AudioPlayer
-                          textToSpeak={word.de}
-                          // 5. 💡 ИСПОЛЬЗУЕМ activeLangCode (который берется из Redux)
-                          lang={activeLangCode}
-                          voice={selectedWordVoice}
-                          rate={1.0}
-                        />
+                        {/* 🛑 ИСПРАВЛЕНИЕ 1: Вызываем AudioPlayer только, если есть текст */}
+                        {word.de && (
+                          <AudioPlayer
+                            textToSpeak={word.de}
+                            // 5. 💡 ИСПОЛЬЗУЕМ activeLangCode (который берется из Redux)
+                            lang={activeLangCode}
+                            voice={selectedWordVoice}
+                            rate={1.0}
+                          />
+                        )}
                       </div>
                       <div className="text-gray-600 text-sm dark:text-gray-300">
                         {word.ru}
@@ -268,13 +271,16 @@ export default function ListWords() {
                   {/* Немецкое предложение */}
                   <div className="text-base text-gray-700 dark:text-gray-200 flex items-center mb-1">
                     <span className="font-bold">{word.exde || "—"}</span>
-                    <AudioPlayer
-                      textToSpeak={word.exde}
-                      // 6. 💡 ИСПОЛЬЗУЕМ activeLangCode (который берется из Redux)
-                      lang={activeLangCode}
-                      voice={selectedWordVoice}
-                      rate={0.8}
-                    />
+                    {/* 🛑 ИСПРАВЛЕНИЕ 2: Вызываем AudioPlayer только, если есть текст примера */}
+                    {word.exde && (
+                      <AudioPlayer
+                        textToSpeak={word.exde}
+                        // 6. 💡 ИСПОЛЬЗУЕМ activeLangCode (который берется из Redux)
+                        lang={activeLangCode}
+                        voice={selectedWordVoice}
+                        rate={0.8}
+                      />
+                    )}
                   </div>
                   {/* Русское предложение */}
                   <div className="text-sm text-gray-500 dark:text-gray-400 italic">
