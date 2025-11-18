@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { loadLessons, saveLessons } from "../data/lessons-storage"; // Предполагается, что эти функции адаптированы для работы с новой структурой
+import { loadLessons, saveLessons } from "../data/lessons-storage";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   HiOutlineUpload,
@@ -15,10 +15,9 @@ const SUPPORTED_TTS_LANGS = ["de", "en", "ko"];
 export default function AddLessonPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  // НОВОЕ: Получаем ID урока для редактирования из URL
   const { editLessonId } = useParams();
 
-  // Получаем выбранный язык из навигации (для нового урока):
+  const selectedFolderId = location.state?.folderId;
   const selectedLangFromNav = location.state?.ttsLang;
 
   // -----------------------------
@@ -31,14 +30,15 @@ export default function AddLessonPage() {
   const [success, setSuccess] = useState(
     editLessonId ? `Урок "${editLessonId}" загружен для редактирования.` : ""
   );
-  // 🟢 НОВОЕ СОСТОЯНИЕ: Текущий язык урока (для сохранения и отображения)
   const [currentLessonLang, setCurrentLessonLang] = useState(
     selectedLangFromNav || SUPPORTED_TTS_LANGS[0]
   );
+  const [currentFolderId, setCurrentFolderId] = useState(
+    selectedFolderId || ""
+  );
 
-  // 🆕 СОСТОЯНИЕ ДЛЯ ВСТРОЕННОГО ПОДТВЕРЖДЕНИЯ ПЕРЕЗАПИСИ
   const [isConfirmingOverwrite, setIsConfirmingOverwrite] = useState(false);
-  const [tempRawText, setTempRawText] = useState(""); // Для хранения текста во время подтверждения
+  const [tempRawText, setTempRawText] = useState("");
 
   // -----------------------------
   // Эффект для загрузки данных при редактировании
@@ -46,18 +46,15 @@ export default function AddLessonPage() {
   useEffect(() => {
     if (editLessonId) {
       const lessons = loadLessons();
-      // 🟢 Чтение урока в НОВОЙ структуре { lang, cards }
       const lessonToEdit = lessons[editLessonId];
 
-      // 🟢 Безопасная проверка: должен быть объект с массивом cards
       if (lessonToEdit && Array.isArray(lessonToEdit.cards)) {
         setLessonId(editLessonId);
-        // 🟢 ИСПОЛЬЗУЕМ lessonToEdit.cards
         setCards(lessonToEdit.cards);
-        // 🟢 УСТАНАВЛИВАЕМ ЯЗЫК УРОКА
         setCurrentLessonLang(lessonToEdit.lang || SUPPORTED_TTS_LANGS[0]);
 
-        // Формируем rawText для текстового поля
+        setCurrentFolderId(lessonToEdit.folderId || selectedFolderId || "");
+
         const rawTextFromCards = lessonToEdit.cards
           .map((c) => `${c.de} — ${c.ru}`)
           .join("\n");
@@ -66,7 +63,7 @@ export default function AddLessonPage() {
         setSuccess(
           `Редактирование урока "${editLessonId}" (${(
             lessonToEdit.lang || "N/A"
-          ).toUpperCase()}). Измените слова, примеры и нажмите "Сохранить".`
+          ).toUpperCase()})...`
         );
       } else {
         setError(
@@ -76,16 +73,23 @@ export default function AddLessonPage() {
         setRawText("");
       }
     } else {
-      // Для нового урока устанавливаем язык из navigation state
       setCurrentLessonLang(selectedLangFromNav || SUPPORTED_TTS_LANGS[0]);
+      setCurrentFolderId(selectedFolderId || "");
     }
-  }, [editLessonId, selectedLangFromNav]);
+
+    if (!editLessonId && !selectedFolderId) {
+      setError(
+        "Невозможно создать урок: не выбрана целевая папка. Вернитесь назад."
+      );
+    }
+  }, [editLessonId, selectedLangFromNav, selectedFolderId]);
 
   // -----------------------------
-  // Логика парсинга и установки карточек
+  // Логика парсинга и установки карточек (без изменений)
   // -----------------------------
   const parseAndSetCards = useCallback(
     (text) => {
+      // ... (Ваша логика парсинга) ...
       const lines = text
         .split("\n")
         .map((l) => l.trim())
@@ -93,20 +97,18 @@ export default function AddLessonPage() {
 
       const parsed = [];
       for (const line of lines) {
-        // Ищем разделители: -, —, :, ;, с пробелом или без
         const parts = line.split(/[-—:;]+\s*/);
 
         if (parts.length < 2) {
           setError(
             `Не могу распарсить строку: "${line}". Убедитесь, что слова разделены символами (- или : или ;).`
           );
-          return false; // Ошибка парсинга
+          return false;
         }
 
         const de = parts[0].trim();
         const ru = parts[1].trim();
 
-        // При парсинге для редактирования, если слово уже было, сохраняем exde/exru/distractors
         const existingCard = cards.find((c) => c.de === de && c.ru === ru);
 
         parsed.push({
@@ -122,16 +124,16 @@ export default function AddLessonPage() {
       setSuccess(
         `Успешно распарсено ${parsed.length} карточек. Теперь добавьте/проверьте примеры.`
       );
-      setIsConfirmingOverwrite(false); // Сбрасываем подтверждение
+      setIsConfirmingOverwrite(false);
       setTempRawText("");
-      setError(""); // Очищаем ошибку
+      setError("");
       return true;
     },
     [cards]
   );
 
   // -----------------------------
-  // Обработчик парсинга (с проверкой перезаписи)
+  // Обработчик парсинга (без изменений)
   // -----------------------------
   const handleParse = () => {
     setError("");
@@ -153,10 +155,7 @@ export default function AddLessonPage() {
     }
 
     const lessons = loadLessons();
-    // Проверка перезаписи не нужна, если мы редактируем текущий урок
     if (lessons[lessonId] && lessonId !== editLessonId) {
-      // Если урок существует И это не текущий редактируемый урок,
-      // активируем встроенное подтверждение
       setTempRawText(rawText);
       setIsConfirmingOverwrite(true);
       setError(
@@ -165,13 +164,11 @@ export default function AddLessonPage() {
       return;
     }
 
-    // Если урока нет, или мы редактируем текущий, парсим сразу
     parseAndSetCards(rawText);
   };
 
   const confirmOverwrite = () => {
     if (parseAndSetCards(tempRawText)) {
-      // Парсинг успешен, теперь пользователь должен нажать "Сохранить"
       setSuccess(
         `Урок "${lessonId}" будет перезаписан. Нажмите "Сохранить урок" внизу.`
       );
@@ -185,7 +182,7 @@ export default function AddLessonPage() {
   };
 
   // -----------------------------
-  // Сохранение урока (КЛЮЧЕВОЕ ИЗМЕНЕНИЕ!)
+  // Сохранение урока
   // -----------------------------
   const saveLesson = () => {
     setError("");
@@ -196,12 +193,16 @@ export default function AddLessonPage() {
       return;
     }
 
+    if (!currentFolderId) {
+      setError("Ошибка сохранения: отсутствует ID целевой папки.");
+      return;
+    }
+
     const lessons = loadLessons();
 
-    // 🟢 СОХРАНЯЕМ В НОВОМ ФОРМАТЕ { lang, cards }
     lessons[lessonId] = {
-      // 🟢 Используем текущий язык урока
       lang: currentLessonLang,
+      folderId: currentFolderId,
       cards: cards.map((card) => ({
         ...card,
         distractors: card.distractors || [],
@@ -210,10 +211,12 @@ export default function AddLessonPage() {
 
     saveLessons(lessons);
 
-    setSuccess(`Урок "${lessonId}" успешно сохранён!`);
+    setSuccess(
+      `Урок "${lessonId}" успешно сохранён в папку ID: ${currentFolderId}!`
+    );
 
     setTimeout(() => {
-      navigate(`/lesson/${lessonId}`);
+      navigate(`/`);
     }, 800);
   };
 
@@ -226,10 +229,10 @@ export default function AddLessonPage() {
       return;
     }
 
-    // 🟢 ЭКСПОРТ В НОВОМ ФОРМАТЕ
     const exportData = {
       lessonId: lessonId,
-      lang: currentLessonLang, // 🟢 Добавлен язык
+      lang: currentLessonLang,
+      folderId: currentFolderId,
       cards: cards,
       meta: {
         app: "WordMaster Lesson Export",
@@ -254,7 +257,7 @@ export default function AddLessonPage() {
   };
 
   // -----------------------------
-  // Импорт урока (Загрузка JSON) (ИЗМЕНЕНИЕ)
+  // Импорт урока (Загрузка JSON)
   // -----------------------------
   const handleImport = (event) => {
     setError("");
@@ -268,19 +271,17 @@ export default function AddLessonPage() {
         const content = e.target.result;
         const importedData = JSON.parse(content);
 
-        // 🟢 Проверяем наличие lessonId, cards (как массив) и lang
         if (
           importedData.lessonId &&
           Array.isArray(importedData.cards) &&
-          importedData.lang &&
-          SUPPORTED_TTS_LANGS.includes(importedData.lang) // Проверка на поддерживаемый язык
+          importedData.lang
         ) {
           setLessonId(importedData.lessonId);
           setCards(importedData.cards);
-          // 🟢 УСТАНАВЛИВАЕМ ЯЗЫК ИЗ ИМПОРТА
           setCurrentLessonLang(importedData.lang);
 
-          // Восстанавливаем сырой текст для удобства редактирования
+          setCurrentFolderId(importedData.folderId || currentFolderId);
+
           const rawTextFromCards = importedData.cards
             .map((c) => `${c.de} — ${c.ru}`)
             .join("\n");
@@ -289,12 +290,10 @@ export default function AddLessonPage() {
           setSuccess(
             `Урок "${
               importedData.lessonId
-            }" (${importedData.lang.toUpperCase()}) успешно импортирован. Добавьте примеры и сохраните.`
+            }" (${importedData.lang.toUpperCase()}) успешно импортирован.`
           );
         } else {
-          throw new Error(
-            "Некорректный формат файла импорта. Должен содержать lessonId, cards (массив) и поддерживаемый язык (lang)."
-          );
+          throw new Error("Некорректный формат файла импорта.");
         }
       } catch (e) {
         setError(`Ошибка импорта: ${e.message}`);
@@ -330,7 +329,7 @@ export default function AddLessonPage() {
           </p>
         </div>
 
-        {/* 2. Импорт/Экспорт (Адаптивный Grid) */}
+        {/* 2. Импорт/Экспорт */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
           <button
             onClick={handleExport}
@@ -349,6 +348,7 @@ export default function AddLessonPage() {
           </label>
           <input
             id="import-file"
+            name="importFile"
             type="file"
             accept=".json"
             onChange={handleImport}
@@ -356,43 +356,55 @@ export default function AddLessonPage() {
           />
         </div>
 
-        {/* 3. Ввод ID урока */}
-        <label className="block mb-2 text-sm font-semibold text-gray-800 dark:text-gray-200">
+        {/* 3. Ввод ID урока - ИСПРАВЛЕНО (добавлен id и htmlFor) */}
+        <label
+          htmlFor="lesson-id"
+          className="block mb-2 text-sm font-semibold text-gray-800 dark:text-gray-200"
+        >
           ID урока (например: les7)
         </label>
         <input
+          id="lesson-id"
           type="text"
+          name="lessonId"
           className={`w-full p-3 mb-4 rounded-lg outline-none border transition-colors
             ${
               editLessonId
-                ? "bg-gray-300 dark:bg-gray-600 border-gray-400 cursor-not-allowed" // Если редактируем, блокируем
+                ? "bg-gray-300 dark:bg-gray-600 border-gray-400 cursor-not-allowed"
                 : "bg-gray-100 dark:bg-gray-700 border-transparent focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
             }`}
           value={lessonId}
           onChange={(e) => setLessonId(e.target.value)}
-          disabled={!!editLessonId} // Блокируем, если редактируем
+          disabled={!!editLessonId}
         />
 
-        {/* 4. Отображение языка урока */}
+        {/* 4. Отображение языка и папки урока */}
         <div className="mb-4 p-3 bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-300 dark:border-gray-600">
-          <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+          <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
             Язык урока:{" "}
-          </span>
-          <span className="text-lg font-bold text-sky-600 dark:text-sky-400">
-            {currentLessonLang.toUpperCase()}
-            {editLessonId && " (задан при создании)"}
-            {!editLessonId &&
-              selectedLangFromNav &&
-              " (выбран на предыдущем шаге)"}
-          </span>
+            <span className="text-lg font-bold text-sky-600 dark:text-sky-400">
+              {currentLessonLang.toUpperCase()}
+            </span>
+          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Целевая папка ID:{" "}
+            <span className="font-mono text-xs bg-gray-200 dark:bg-gray-600 p-1 rounded">
+              {currentFolderId || "НЕ ВЫБРАНА"}
+            </span>
+          </p>
         </div>
 
-        {/* 5. Ввод списка слов */}
-        <label className="block mb-2 text-sm font-semibold text-gray-800 dark:text-gray-200">
+        {/* 5. Ввод списка слов - ИСПРАВЛЕНО (добавлен id, name и htmlFor) */}
+        <label
+          htmlFor="raw-text-input"
+          className="block mb-2 text-sm font-semibold text-gray-800 dark:text-gray-200"
+        >
           Вставьте слова (немецкое — русский):
         </label>
 
         <textarea
+          id="raw-text-input" 
+          name="rawText"
           rows={8}
           className="w-full p-3 rounded-lg bg-gray-100 dark:bg-gray-700 font-mono text-sm outline-none border border-transparent focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-colors"
           placeholder={`der Hund — собака\ndie Schule — школа\ndas Brot — хлеб`}
@@ -461,21 +473,31 @@ export default function AddLessonPage() {
                   {i + 1}. {card.de} — {card.ru}
                 </div>
 
+                {/* Пример DE - ИСПРАВЛЕНО (добавлен id) */}
                 <input
+                  id={`example-de-${i}`} 
                   type="text"
+                  name={`exampleDe-${i}`}
                   placeholder="1. Пример DE (предложение с этим словом)"
                   value={card.exde}
                   onChange={(e) => updateCard(i, "exde", e.target.value)}
                   className="w-full p-2 rounded-lg bg-white dark:bg-gray-600 outline-none placeholder:text-gray-500 dark:placeholder:text-gray-400 border border-gray-300 dark:border-gray-500 focus:border-sky-500"
                 />
 
+                {/* Пример RU - ИСПРАВЛЕНО (добавлены id и name) */}
                 <input
+                  id={`example-ru-${i}`} 
+                  name={`exampleRu-${i}`} 
                   type="text"
                   placeholder="2. Пример RU (перевод примера DE)"
                   value={card.exru}
                   onChange={(e) => updateCard(i, "exru", e.target.value)}
                   className="w-full p-2 rounded-lg bg-white dark:bg-gray-600 outline-none placeholder:text-gray-500 dark:placeholder:text-gray-400 border border-gray-300 dark:border-gray-500 focus:border-sky-500"
                 />
+                
+                {/* Примечание: В реальном приложении для полей примеров
+                также рекомендуется добавить aria-label или визуально скрытую
+                метку, если нет явной видимой <label> */}
               </div>
             ))}
 
