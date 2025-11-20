@@ -96,8 +96,8 @@ export const LessonCardsView = ({
                     <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
                       Язык: {lessonLang.toUpperCase()}
                     </span>
-                    <p className="text-lg font-semibold text-gray-800 dark:text-gray-50">
-                      Урок {lessonId.toUpperCase()}
+                    <p className="text-l font-semibold text-gray-800 dark:text-gray-50">
+                      {lessonId}
                     </p>
 
                     <div className="mt-1 flex items-center text-xs">

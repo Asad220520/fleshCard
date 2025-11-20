@@ -1,7 +1,7 @@
 import { useSelector } from "react-redux";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { mockLessons } from "../../data/mockLessons";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom"; // 🟢 КЛЮЧ: Для чтения folderId из URL
 // Предполагаем, что эти функции доступны:
 import { loadLessons, saveLessons } from "../../data/lessons-storage";
 import {
@@ -10,13 +10,15 @@ import {
   HiFolderOpen,
   HiFolderAdd,
 } from "react-icons/hi";
+// Вспомогательные компоненты (предполагаем, что они существуют)
 import { LanguageFolderView } from "./LanguageFolderView";
 import { ImportOrAddModal } from "./ImportOrAddModal";
 import { CreateFolderModal } from "./CreateFolderModal";
 import { RenameFolderModal } from "./RenameFolderModal";
 import { LessonCardsView } from "./LessonCardsView";
+import { loadFolders } from "./loadFolders";
 
-// 💡 Глобальные константы (Без изменений)
+// 💡 Глобальные константы
 const SUPPORTED_TTS_LANGS = [
   "без TTS",
   "de",
@@ -35,25 +37,7 @@ const FOLDERS_STORAGE_KEY = "wordmasterFolders";
 // -----------------------------------------------------------
 // ФУНКЦИИ ХРАНЕНИЯ ДАННЫХ ПАПОК
 // -----------------------------------------------------------
-const loadFolders = () => {
-  try {
-    const stored = localStorage.getItem(FOLDERS_STORAGE_KEY);
-    // Добавление заглушек для примера, если папки пусты
-    if (!stored)
-      return {
-        de_a1: { id: "de_a1_pronomen", name: "Немецкий A1", defaultLang: "de" },
-        en_main: {
-          id: "en_main",
-          name: " Английский",
-          defaultLang: "en",
-        },
-      };
-    return stored ? JSON.parse(stored) : {};
-  } catch (e) {
-    console.error("Ошибка загрузки папок:", e);
-    return {};
-  }
-};
+
 
 const saveFolders = (folders) => {
   try {
@@ -62,8 +46,15 @@ const saveFolders = (folders) => {
     console.error("Ошибка сохранения папок:", e);
   }
 };
+
+// -----------------------------------------------------------
+// ОСНОВНОЙ КОМПОНЕНТ
+// -----------------------------------------------------------
 export default function LessonsList() {
   const navigate = useNavigate();
+  // 🟢 ЧИТАЕМ folderId ПРЯМО ИЗ URL (будет undefined на маршруте '/')
+  const { folderId } = useParams();
+
   const progressState = useSelector((state) => state.words.progress);
 
   const [lessonsData, setLessonsData] = useState({});
@@ -73,7 +64,6 @@ export default function LessonsList() {
   const [showCreateFolderModal, setShowCreateFolderModal] = useState(false);
   const [showRenameFolderModal, setShowRenameFolderModal] = useState(false);
   const [renameTargetFolder, setRenameTargetFolder] = useState(null);
-  const [selectedFolderId, setSelectedFolderId] = useState(null);
   const importFileInputRef = useRef(null);
 
   // --- ЭФФЕКТ ЗАГРУЗКИ И МИГРАЦИИ ДАННЫХ ---
@@ -96,13 +86,11 @@ export default function LessonsList() {
           lessonValues.map((l) => l.folderId || l.lang || "de_default")
         ),
       ];
-
       uniqueFolderIds.forEach((folderId) => {
         const lessonsWithId = lessonValues.filter(
           (l) => (l.folderId || l.lang || "de_default") === folderId
         );
         const defaultLang = lessonsWithId[0]?.lang || "de";
-
         newFolders[folderId] = {
           id: folderId,
           name: `${defaultLang.toUpperCase()} - Папка`,
@@ -117,7 +105,6 @@ export default function LessonsList() {
       const lesson = savedLessons[lessonId];
       if (!lesson.folderId) {
         const lang = lesson.lang || "de";
-        // Поиск существующей папки для этого языка
         const existingFolder = Object.values(newFolders).find(
           (f) => f.defaultLang === lang
         );
@@ -125,7 +112,6 @@ export default function LessonsList() {
         if (existingFolder) {
           lesson.folderId = existingFolder.id;
         } else {
-          // Если папки нет, создаем временную
           const tempFolderId = lang;
           newFolders[tempFolderId] = {
             id: tempFolderId,
@@ -215,7 +201,7 @@ export default function LessonsList() {
   );
 
   const getFolderProgress = useCallback(
-    (folderId, lessonsInFolder) => {
+    (id, lessonsInFolder) => {
       let totalWords = 0;
       let totalLearned = 0;
 
@@ -236,7 +222,17 @@ export default function LessonsList() {
     [getProgress]
   );
 
-  // --- ОБРАБОТЧИКИ ДЕЙСТВИЙ С ПАПКАМИ ---
+  // --- ОБРАБОТЧИКИ ДЕЙСТВИЙ С ПАПКАМИ И УРОКАМИ ---
+
+  // 🟢 КЛЮЧ: Переход на новый маршрут /lessons/:folderId
+  const handleFolderClick = useCallback(
+    (id) => {
+      navigate(`/lessons/${id}`);
+      setOpenMenuId(null);
+    },
+    [navigate]
+  );
+
   const handleCreateFolder = useCallback(
     ({ name, defaultLang }) => {
       const newFolderId = `f_${Date.now()}`;
@@ -261,13 +257,13 @@ export default function LessonsList() {
   }, []);
 
   const handleRenameFolder = useCallback(
-    (folderId, newName) => {
-      const folder = foldersData[folderId];
+    (id, newName) => {
+      const folder = foldersData[id];
       if (!folder) return;
 
       const updatedFolders = {
         ...foldersData,
-        [folderId]: { ...folder, name: newName },
+        [id]: { ...folder, name: newName },
       };
 
       setFoldersData(updatedFolders);
@@ -279,9 +275,9 @@ export default function LessonsList() {
   );
 
   const handleDeleteFolder = useCallback(
-    (folderId) => {
-      const folderName = foldersData[folderId]?.name;
-      const lessonsInFolder = groupedLessons[folderId] || [];
+    (folderIdToDelete) => {
+      const folderName = foldersData[folderIdToDelete]?.name;
+      const lessonsInFolder = groupedLessons[folderIdToDelete] || [];
       const confirmDelete = window.confirm(
         `Вы уверены, что хотите удалить папку "${folderName}" и ВСЕ ${lessonsInFolder.length} урок(а) в ней? Это действие необратимо.`
       );
@@ -291,41 +287,37 @@ export default function LessonsList() {
       lessonsInFolder.forEach((lesson) => delete updatedLessons[lesson.id]);
 
       const updatedFolders = { ...foldersData };
-      delete updatedFolders[folderId];
+      delete updatedFolders[folderIdToDelete];
 
       setLessonsData(updatedLessons);
       setFoldersData(updatedFolders);
       saveLessons(updatedLessons);
       saveFolders(updatedFolders);
-      setSelectedFolderId(null);
+
+      // 🟢 Если удалили текущую открытую папку, переходим на /
+      if (folderIdToDelete === folderId) {
+        navigate("/");
+      }
 
       alert(`Папка "${folderName}" и её содержимое удалены.`);
     },
-    [lessonsData, foldersData, groupedLessons]
+    [lessonsData, foldersData, groupedLessons, folderId, navigate]
   );
 
-  // 🟢 КРИТИЧЕСКИЙ ОБРАБОТЧИК: Передача folderId
   const handleAddLessonToFolder = useCallback(
-    (folderId) => {
-      const folder = foldersData[folderId];
+    (id) => {
+      const folder = foldersData[id];
       if (!folder) return;
 
-      // Передача УНИКАЛЬНОГО folderId и языка в AddLessonPage
+      // Передача folderId и языка в AddLessonPage
       navigate("/add-lesson", {
-        state: { folderId: folderId, ttsLang: folder.defaultLang },
+        state: { folderId: id, ttsLang: folder.defaultLang },
       });
     },
     [foldersData, navigate]
   );
 
-  const handleFolderClick = useCallback((folderId) => {
-    setSelectedFolderId(folderId);
-    setOpenMenuId(null);
-  }, []);
-
   // --- ОБРАБОТЧИКИ ЭКСПОРТА/ИМПОРТА ---
-
-  // 🔴 ЗАВЕРШЕННАЯ ФУНКЦИЯ handleImport
   const handleImport = useCallback(
     (e) => {
       const file = e.target.files[0];
@@ -353,7 +345,6 @@ export default function LessonsList() {
                 defaultLang: lang,
               };
 
-              // Обновляем состояние foldersData
               setFoldersData((prev) => {
                 const updated = { ...prev, [newFolderId]: folder };
                 saveFolders(updated);
@@ -364,14 +355,12 @@ export default function LessonsList() {
           };
 
           if (importedData.folderLang && importedData.lessons) {
-            // Импорт папки (Множество уроков)
+            // Импорт папки
             const lang = importedData.folderLang;
             folderToUse = findOrCreateFolder(lang, "Импорт");
-
             importedData.lessons.forEach((lesson) => {
               let lessonId = lesson.lessonId;
               let count = 1;
-              // Генерация уникального ID
               while (lessonsData[lessonId]) {
                 lessonId = `${lesson.lessonId}_imp${count}`;
                 count++;
@@ -386,12 +375,11 @@ export default function LessonsList() {
             successfulImport = true;
           } else if (importedData.lessonId && importedData.cards) {
             // Импорт одного урока
-            const lang = importedData.lang || "de"; // Использование 'de' по умолчанию
+            const lang = importedData.lang || "de";
             folderToUse = findOrCreateFolder(lang, "Импорт");
 
             let lessonId = importedData.lessonId;
             let count = 1;
-            // Генерация уникального ID
             while (lessonsData[lessonId]) {
               lessonId = `${importedData.lessonId}_imp${count}`;
               count++;
@@ -406,19 +394,16 @@ export default function LessonsList() {
             }"!`;
             successfulImport = true;
           } else {
-            throw new Error(
-              "Неверный формат JSON-файла. Файл должен содержать 'lessonId' и 'cards' или 'folderLang' и 'lessons'."
-            );
+            throw new Error("Неверный формат JSON-файла.");
           }
 
-          // 🔴 ОБНОВЛЕНИЕ СОСТОЯНИЙ ПОСЛЕ УСПЕШНОГО ИМПОРТА
           if (successfulImport) {
             const updatedLessons = { ...lessonsData, ...newLessons };
             setLessonsData(updatedLessons);
             saveLessons(updatedLessons);
             alert(message);
             // Переход в папку, куда произошел импорт
-            setSelectedFolderId(folderToUse.id);
+            navigate(`/lessons/${folderToUse.id}`);
           } else {
             alert("Файл не содержит данных для импорта.");
           }
@@ -431,12 +416,11 @@ export default function LessonsList() {
       reader.readAsText(file);
       e.target.value = null;
     },
-    [lessonsData, foldersData]
+    [lessonsData, foldersData, navigate]
   );
-  // -----------------------------------------------------------
-  // Функция-утилита для скачивания JSON-файла
+
   const downloadJsonFile = (data, filename) => {
-    const json = JSON.stringify(data, null, 2); // Преобразуем объект в JSON с отступами
+    const json = JSON.stringify(data, null, 2);
     const blob = new Blob([json], { type: "application/json" });
     const href = URL.createObjectURL(blob);
 
@@ -447,33 +431,29 @@ export default function LessonsList() {
     link.click();
 
     document.body.removeChild(link);
-    URL.revokeObjectURL(href); // Освобождаем память
+    URL.revokeObjectURL(href);
   };
+
   const exportFolder = useCallback(
-    (folderId, lessonsInFolder) => {
-      const folder = foldersData[folderId];
+    (id, lessonsInFolder) => {
+      const folder = foldersData[id];
       if (!folder) return;
 
-      // 1. Собираем данные
       const lessonsExportArray = lessonsInFolder.map((lesson) => ({
         lessonId: lesson.id,
         lang: lesson.lang,
         cards: lesson.cards,
       }));
 
-      // 2. Создаем корневой объект папки
       const exportData = {
-        // Уникальный ключ для идентификации экспорта как папки
         isFolderExport: true,
-        folderId: folderId,
+        folderId: id,
         folderName: folder.name,
         folderLang: folder.defaultLang,
         lessons: lessonsExportArray,
       };
 
       const filename = `${folder.name.replace(/\s/g, "_")}_folder_export.json`;
-
-      // 3. Используем утилиту для скачивания
       downloadJsonFile(exportData, filename);
 
       alert(
@@ -482,18 +462,15 @@ export default function LessonsList() {
     },
     [foldersData]
   );
+
   const exportSingleLesson = useCallback((lessonId, lesson) => {
-    // 1. Создаем объект данных для экспорта урока
     const exportData = {
       lessonId: lessonId,
       lang: lesson.lang,
       cards: lesson.cards,
-      // Можно добавить любую другую мета-информацию урока
     };
 
     const filename = `${lessonId}_lesson_export.json`;
-
-    // 2. Используем утилиту для скачивания
     downloadJsonFile(exportData, filename);
 
     alert(`Урок "${lessonId.toUpperCase()}" экспортирован.`);
@@ -515,12 +492,14 @@ export default function LessonsList() {
     },
     [lessonsData]
   );
+
   const handleEditLesson = useCallback(
     (lessonId) => {
       navigate(`/edit-lesson/${lessonId}`);
     },
     [navigate]
   );
+
   const handleCardClick = useCallback(
     (lessonId) => {
       navigate(`/lesson/${lessonId}`);
@@ -529,12 +508,15 @@ export default function LessonsList() {
   );
 
   // --- РЕНДЕРИНГ ---
-  const currentLessons = groupedLessons[selectedFolderId] || [];
-  const selectedFolder = foldersData[selectedFolderId];
+  // 🟢 Определяем, находимся ли мы в представлении папок (folderId === undefined)
+  const isFolderView = !folderId;
+  const currentLessons = groupedLessons[folderId] || [];
+  const selectedFolder = foldersData[folderId];
 
   return (
     <div className="p-4 sm:p-6 pb-24 sm:pb-16 bg-gray-50 dark:bg-gray-900 transition-colors duration-300 min-h-screen">
-      {!selectedFolderId ? (
+      {isFolderView ? (
+        // 1. РЕНДЕРИНГ СПИСКА ПАПОК (МАРШРУТ: /)
         <>
           <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-50 mb-6 max-w-4xl mx-auto flex items-center">
             <HiFolderOpen className="w-7 h-7 mr-2 text-sky-600" />
@@ -545,7 +527,7 @@ export default function LessonsList() {
             folders={foldersArray}
             groupedLessons={groupedLessons}
             getFolderProgress={getFolderProgress}
-            onFolderClick={handleFolderClick}
+            onFolderClick={handleFolderClick} // 🟢 Переход на /lessons/:folderId
             onExportFolder={exportFolder}
             onAddNewLesson={handleAddLessonToFolder}
             onDeleteFolder={handleDeleteFolder}
@@ -555,11 +537,12 @@ export default function LessonsList() {
           />
         </>
       ) : (
+        // 2. РЕНДЕРИНГ УРОКОВ В ПАПКЕ (МАРШРУТ: /lessons/:folderId)
         <>
           <div className="max-w-4xl mx-auto mb-6 flex items-center justify-between">
             <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-50 flex items-center">
               <button
-                onClick={() => setSelectedFolderId(null)}
+                onClick={() => navigate("/")} // 🟢 Кнопка "назад" ведет на /
                 className="p-2 mr-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition"
                 title="Вернуться к списку папок"
               >
@@ -586,6 +569,8 @@ export default function LessonsList() {
           />
         </>
       )}
+
+      {/* Input для импорта (скрыт) */}
       <input
         type="file"
         ref={importFileInputRef}
@@ -593,13 +578,15 @@ export default function LessonsList() {
         onChange={handleImport}
         className="hidden"
       />
+
+      {/* ПЛАВАЮЩАЯ КНОПКА ДОБАВЛЕНИЯ */}
       <button
         onClick={() => {
-          if (selectedFolderId) {
-            // Если выбрана папка, сразу добавляем урок в нее
-            handleAddLessonToFolder(selectedFolderId);
+          if (folderId) {
+            // 🟢 Если folderId есть в URL
+            handleAddLessonToFolder(folderId);
           } else {
-            // Если папка не выбрана, показываем модалку Импорт/Создать папку
+            // 🟢 Если folderId нет (на главной странице)
             setShowImportOrAddModal(true);
           }
         }}
@@ -608,22 +595,24 @@ export default function LessonsList() {
                     rounded-full text-3xl font-light shadow-2xl 
                     hover:bg-sky-700 active:scale-95 transition duration-150 z-[201]`}
         title={
-          selectedFolderId
+          folderId
             ? `Добавить урок в "${selectedFolder?.name}"`
             : "Добавить/Импортировать"
         }
         aria-label={
-          selectedFolderId
+          folderId
             ? `Добавить урок в "${selectedFolder?.name}"`
             : "Добавить/Импортировать"
         }
       >
-        {selectedFolderId ? (
+        {folderId ? (
           <HiPlus className="w-8 h-8" />
         ) : (
           <HiFolderAdd className="w-7 h-7" />
         )}
       </button>
+
+      {/* МОДАЛЬНЫЕ ОКНА */}
       {showImportOrAddModal && (
         <ImportOrAddModal
           onClose={() => setShowImportOrAddModal(false)}
