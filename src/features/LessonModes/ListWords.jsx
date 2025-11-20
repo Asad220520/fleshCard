@@ -93,6 +93,8 @@ export default function ListWords() {
     }
   }, [voices, activeLangCode, savedVoiceName]); // Зависимость от activeLangCode
 
+  // 🛑 УДАЛЕН useEffect для автоматического озвучивания, чтобы оно не срабатывало.
+
   // 💡 ВЫЧИСЛЯЕМ УНИВЕРСАЛЬНЫЙ НАБОР ВЫУЧЕННЫХ СЛОВ (Set)
   const learnedSet = useMemo(() => {
     const allLearnedWords = [
@@ -312,7 +314,6 @@ export default function ListWords() {
                         {word.de && (
                           <AudioPlayer
                             textToSpeak={word.de}
-                            // 5. 💡 ИСПОЛЬЗУЕМ activeLangCode (который берется из Redux)
                             lang={activeLangCode}
                             voice={selectedWordVoice}
                             rate={1.0}
