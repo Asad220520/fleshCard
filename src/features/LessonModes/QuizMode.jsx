@@ -103,7 +103,7 @@ export default function QuizMode() {
   }, [gameOverTimestamp, cooldownDuration, dispatch]);
 
   const handlePurchasePremium = () => {
-    navigate(`/checkout/restore-lives/${lessonId}`);
+    navigate(`/premium-status`);
   };
 
   // --- ЛОГИКА TTS (Без изменений) ---

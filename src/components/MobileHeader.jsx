@@ -76,7 +76,7 @@ const MobileHeader = ({ label = "Назад", className = "" }) => {
       </Link>
 
       {/* 2. Кнопка "Мои слова" */}
-      <Link
+      {/* <Link
         to="/learned"
         className="flex flex-col items-center justify-center p-2 rounded-xl text-green-600 hover:text-green-500 
                    dark:text-green-400 dark:hover:text-green-300"
@@ -84,7 +84,7 @@ const MobileHeader = ({ label = "Назад", className = "" }) => {
       >
         <HiBookmark className="w-6 h-6" />
         <span className="text-xs mt-1">Мои слова</span>
-      </Link>
+      </Link> */}
 
       {/* 3. ✅ Кнопка "Профиль" */}
       <Link

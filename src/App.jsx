@@ -3,7 +3,7 @@ import { Provider } from "react-redux";
 import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
 import MobileHeader from "./components/MobileHeader";
 import LessonsList from "./pages/lessons/LessonsList.jsx"; // Компонент, который использует languageId
-import LearnedWords from "./pages/LearnedWords";
+// import LearnedWords from "./pages/LearnedWords";
 import LessonWords from "./pages/LessonWords";
 
 /* Импорты страниц и режимов */
@@ -19,7 +19,7 @@ import SentencePuzzle from "./features/LessonModes/SentencePuzzle.jsx";
 import AddLessonPage from "./pages/AddLessonPage.jsx";
 import Header from "./components/Header.jsx";
 import { store } from "./store/index.js";
-import Checkout from "./pages/Checkout.jsx";
+// import Checkout from "./pages/Checkout.jsx";
 import FolderContentPage from "./pages/lessons/FolderContentPage.jsx";
 import PremiumStatusPage from "./pages/PremiumStatusPage.jsx";
 import FAQPage from "./pages/FAQPage.jsx";
@@ -62,19 +62,19 @@ export default function App() {
 
               {/* ... (Остальные маршруты) */}
 
-              <Route path="/learned" element={<LearnedWords />} />
+              {/* <Route path="/learned" element={<LearnedWords />} /> */}
               <Route path="/settings" element={<Settings />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/add-lesson" element={<AddLessonPage />} />
-              <Route path="/faq" element={<FAQPage />} />
+              <Route path="/add-lesson" element={<FAQPage />} />
               <Route
                 path="/edit-lesson/:editLessonId"
                 element={<AddLessonPage />}
               />
-              <Route
+              {/* <Route
                 path="/checkout"
                 element={<Checkout />}
-              />
+              /> */}
               <Route
                 path="/premium-status"
                 element={<PremiumStatusPage />}

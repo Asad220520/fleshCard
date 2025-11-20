@@ -4,7 +4,7 @@ const initialState = {
   // Временная метка последнего проигрыша (null, если игра активна)
   gameOverTimestamp: null,
   // Максимальное время ожидания (5 минут в миллисекундах)
-  cooldownDuration: 5 * 60 * 1000,
+  cooldownDuration: 1 * 60 * 1000,
 };
 
 const gameStateSlice = createSlice({
