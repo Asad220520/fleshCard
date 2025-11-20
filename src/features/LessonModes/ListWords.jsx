@@ -93,7 +93,24 @@ export default function ListWords() {
     }
   }, [voices, activeLangCode, savedVoiceName]); // Зависимость от activeLangCode
 
-  // 🛑 УДАЛЕН useEffect для автоматического озвучивания, чтобы оно не срабатывало.
+  // 🛑 НОВЫЙ useEffect: АВТОМАТИЧЕСКОЕ ОЗВУЧИВАНИЕ ПРИ РЕНДЕРЕ (как в QuizMode)
+  useEffect(() => {
+    // Автоматическое озвучивание первого слова в списке при загрузке.
+    if (words.length > 0 && selectedWordVoice) {
+      window.speechSynthesis.cancel();
+      try {
+        const firstWord = words[0];
+        const utterance = new SpeechSynthesisUtterance(firstWord.de);
+        utterance.lang = selectedWordVoice.lang;
+        utterance.voice = selectedWordVoice;
+        utterance.rate = 1.0; // Сохраняем стандартную скорость для ListWords
+        window.speechSynthesis.speak(utterance);
+      } catch (e) {
+        console.error("TTS failed during initial load:", e);
+      }
+    }
+    // Зависимости: words (для проверки, что они загружены), selectedWordVoice (для голоса)
+  }, [words, selectedWordVoice]);
 
   // 💡 ВЫЧИСЛЯЕМ УНИВЕРСАЛЬНЫЙ НАБОР ВЫУЧЕННЫХ СЛОВ (Set)
   const learnedSet = useMemo(() => {
