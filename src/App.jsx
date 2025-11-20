@@ -21,6 +21,8 @@ import Header from "./components/Header.jsx";
 import { store } from "./store/index.js";
 import Checkout from "./pages/Checkout.jsx";
 import FolderContentPage from "./pages/lessons/FolderContentPage.jsx";
+import PremiumStatusPage from "./pages/PremiumStatusPage.jsx";
+import FAQPage from "./pages/FAQPage.jsx";
 
 export default function App() {
   return (
@@ -64,14 +66,20 @@ export default function App() {
               <Route path="/settings" element={<Settings />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/add-lesson" element={<AddLessonPage />} />
+              <Route path="/faq" element={<FAQPage />} />
               <Route
                 path="/edit-lesson/:editLessonId"
                 element={<AddLessonPage />}
               />
               <Route
-                path="/checkout/:product/:lessonId"
+                path="/checkout"
                 element={<Checkout />}
               />
+              <Route
+                path="/premium-status"
+                element={<PremiumStatusPage />}
+              />
+              
               <Route
                 path="/learned/lesson/:lessonId"
                 element={<LessonWords />}

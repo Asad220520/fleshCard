@@ -152,8 +152,8 @@ export default function LessonPage() {
 
   return (
     <div className="p-4 sm:p-6 flex flex-col items-center bg-gray-50 min-h-screen dark:bg-gray-900 transition-colors duration-300">
-      <h1 className="text-4xl font-extrabold text-gray-800 dark:text-gray-100 mt-4 mb-1 text-center">
-        {lessonId.toUpperCase()}
+      <h1 className="text-2xl font-extrabold text-gray-800 dark:text-gray-100 mt-4 mb-1 text-center">
+        {lessonId}
       </h1>
       {/* 💡 ДОБАВЛЕНО: Отображение языка урока */}
       <p className="text-xl font-medium text-sky-600 dark:text-sky-400 mb-3 text-center">
