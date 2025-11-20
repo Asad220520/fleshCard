@@ -261,7 +261,7 @@ export default function FlashCardsMode() {
             className="bg-sky-500 text-white shadow-xl flex-col"
           >
             <span className="text-4xl font-bold mb-4">
-              {current.de.toUpperCase()}
+              {current.de}
             </span>
           </div>
 

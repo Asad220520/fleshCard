@@ -407,7 +407,7 @@ export default function QuizMode() {
         >
           {/* Само слово */}
           <span className="text-3xl sm:text-4xl font-extrabold tracking-widest text-center sm:text-left drop-shadow-lg">
-            {current?.de.toUpperCase()}
+            {current?.de}
           </span>
 
           {/* AudioPlayer: Иконка тоже окрашена в зеленый/изумрудный для гармонии */}
