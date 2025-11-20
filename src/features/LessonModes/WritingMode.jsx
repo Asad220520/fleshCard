@@ -2,20 +2,19 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  markLearned,
+  // markLearned удален, поскольку прогресс НЕ сохраняется
   clearLessonProgress,
 } from "../../store/words/progressSlice";
 import { selectLesson } from "../../store/words/wordsSlice";
 import { lessons } from "../../data";
-// Импорт иконок
 import {
   HiCheckCircle,
   HiXCircle,
   HiLightBulb,
   HiArrowRight,
-  HiArrowLeft,
 } from "react-icons/hi";
 import LessonComplete from "../../components/LessonComplete";
+import ProgressBar from "../../components/UI/ProgressBar";
 
 // Функция нормализации (оставлена без изменений)
 function normalize(str) {
@@ -30,28 +29,16 @@ function normalize(str) {
 
 // КОНСТАНТА: Максимальное количество слов в одной учебной сессии
 const MAX_SESSION_SIZE = 10;
-// Константа для очистки всех режимов (для контекста) - Обновлена
-const ALL_MODES = [
-  "flashcards",
-  "matching",
-  "quiz",
-  "writing",
-  "sentence_puzzle",
-];
 
 export default function WritingMode() {
   const { lessonId } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  // ✅ ИСПРАВЛЕНИЕ 1: list теперь находится в state.words.navigation
+  // 1. ИЗВЛЕКАЕМ ВСЕ LEARNED-СПИСКИ ДЛЯ УНИФИЦИРОВАННОЙ ФИЛЬТРАЦИИ
   const { list } = useSelector((s) => s.words.navigation);
-
-  // ✅ ИСПРАВЛЕНИЕ 2: learned* массивы теперь находятся в state.words.progress
   const {
-    // 🛑 Используем только learnedWriting для фильтрации в этом режиме
     learnedWriting,
-    // Остальные массивы импортируем, но не используем в фильтрации, если нужен независимый прогресс
     learnedFlashcards,
     learnedMatching,
     learnedQuiz,
@@ -62,86 +49,130 @@ export default function WritingMode() {
   const [input, setInput] = useState("");
   const [checkState, setCheckState] = useState(null); // 'correct', 'wrong'
   const [showHint, setShowHint] = useState(false);
-  // Фиксированный список слов для текущей сессии
   const [sessionList, setSessionList] = useState([]);
-  // Состояние для отслеживания завершения сессии (все слова просмотрены)
-  const [isSessionComplete, setIsSessionComplete] = useState(false);
+  const [isLessonFullyComplete, setIsLessonFullyComplete] = useState(false);
 
-  // --- Расчет пула слов (ИЗОЛИРОВАННАЯ фильтрация) ---
+  // 💡 НОВОЕ: Локальный набор для слов, "выученных" в ТЕКУЩЕЙ СЕССИИ (не сохраняются в Redux)
+  const [sessionLearnedSet, setSessionLearnedSet] = useState(new Set());
 
-  // 💡 ФУНКЦИЯ: для получения оставшихся слов ТОЛЬКО из learnedWriting
+  // --- Расчет пула слов (УНИФИЦИРОВАННАЯ фильтрация) ---
+
   const getRemainingList = useCallback(() => {
-    // 1. Создаем Set уникальных выученных ключей ТОЛЬКО ИЗ РЕЖИМА ПИСЬМО
-    const learnedSet = new Set();
-    learnedWriting.forEach((w) => learnedSet.add(`${w.de}-${w.lessonId}`)); // <-- Используем только learnedWriting
+    // 1. Слова, выученные в Redux (т.е., в других режимах)
+    const allReduxLearnedWords = [
+      ...learnedFlashcards,
+      ...learnedMatching,
+      ...learnedQuiz,
+      ...learnedWriting,
+      ...(learnedSentencePuzzle || []),
+    ];
+    const reduxLearnedSet = new Set();
+    allReduxLearnedWords.forEach((w) =>
+      reduxLearnedSet.add(`${w.de}-${w.lessonId}`)
+    );
 
-    // 2. Фильтруем list: оставляем только те слова, которых НЕТ в learnedSet
     return (
       list?.filter((word) => {
         const key = `${word.de}-${word.lessonId}`;
-        // Слово исключается, только если оно выучено В РЕЖИМЕ ПИСЬМО
-        return word.lessonId === lessonId && !learnedSet.has(key);
+
+        // Слово должно быть из текущего урока И НЕ должно быть выучено в Redux
+        const isLessonWord = word.lessonId === lessonId;
+        const isReduxLearned = reduxLearnedSet.has(key);
+
+        return isLessonWord && !isReduxLearned;
       }) || []
     );
   }, [
     list,
-    learnedWriting, // <-- В зависимости оставляем только learnedWriting
+    learnedFlashcards,
+    learnedMatching,
+    learnedQuiz,
+    learnedWriting,
+    learnedSentencePuzzle,
     lessonId,
   ]);
 
-  // Список всех невыученных слов (весь пул) - используем useMemo
-  const allRemainingList = useMemo(
+  // Список всех невыученных слов (весь пул, отфильтрованный только по Redux)
+  const reduxRemainingList = useMemo(
     () => getRemainingList(),
     [getRemainingList]
   );
 
+  // 💡 Список всех НЕвыученных слов (из Redux), минус слова, которые уже
+  // успешно отвечены в текущей ЛОКАЛЬНОЙ сессии. ЭТО НАШ ИСТИННЫЙ ПУЛ.
+  const allRemainingList = useMemo(() => {
+    return reduxRemainingList.filter((word) => {
+      const key = `${word.de}-${word.lessonId}`;
+      return !sessionLearnedSet.has(key);
+    });
+  }, [reduxRemainingList, sessionLearnedSet]);
+
+  const totalRemaining = allRemainingList.length;
+
   const word = sessionList[index];
+
+  // 💡 ФУНКЦИЯ ДЛЯ ЗАГРУЗКИ НОВОГО БАТЧА
+  const loadNewBatch = useCallback(() => {
+    // Используем allRemainingList, который уже отфильтрован по sessionLearnedSet
+    if (allRemainingList.length > 0) {
+      const initialBatch = allRemainingList.slice(0, MAX_SESSION_SIZE);
+      setSessionList(initialBatch);
+      setIndex(0);
+      setInput("");
+      setCheckState(null);
+      setShowHint(false);
+    }
+  }, [allRemainingList]);
 
   // --- Эффекты загрузки и инициализации ---
 
-  // 1. Загружаем урок
+  // 1. Загружаем урок (Без изменений)
   useEffect(() => {
     if ((!list || list.length === 0) && lessons[lessonId]) {
       dispatch(selectLesson({ words: lessons[lessonId], lessonId }));
     }
   }, [list, dispatch, lessonId]);
 
-  // 2. Инициализация sessionList (батча) при загрузке
+  // 2. Инициализация sessionList при загрузке или сбросе
   useEffect(() => {
-    // Убедиться, что sessionList сбрасывается, если remainingList изменился
-    if (allRemainingList.length > 0) {
-      // Создаем уникальные строки ключей для сравнения
-      const currentBatchKeys = sessionList
-        .map((w) => `${w.de}-${w.lessonId}`)
-        .join(",");
-      const newBatchKeys = allRemainingList
-        .slice(0, MAX_SESSION_SIZE)
-        .map((w) => `${w.de}-${w.lessonId}`)
-        .join(",");
-
-      // Сравниваем, если текущий батч отличается от того, который должен быть
-      if (currentBatchKeys !== newBatchKeys || sessionList.length === 0) {
-        const initialBatch = allRemainingList.slice(0, MAX_SESSION_SIZE);
-        setSessionList(initialBatch);
-        setIndex(0); // Сбрасываем индекс, чтобы начать с первого слова нового батча
-        setIsSessionComplete(false); // Сбрасываем завершение
-      }
+    if (
+      allRemainingList.length > 0 &&
+      (sessionList.length === 0 || index === 0)
+    ) {
+      loadNewBatch();
+      setIsLessonFullyComplete(false);
     }
-  }, [allRemainingList, sessionList.length]);
 
-  // 3. Проверка завершения сессии
+    if (sessionList.length === 0 && allRemainingList.length > 0) {
+      setIsLessonFullyComplete(false);
+    }
+
+    // 💡 Если allRemainingList стал 0 (например, после последнего успешного ответа),
+    // немедленно завершаем урок.
+    if (allRemainingList.length === 0 && list && list.length > 0) {
+      setIsLessonFullyComplete(true);
+    }
+  }, [allRemainingList, sessionList.length, index, loadNewBatch, list]);
+
+  // 3. ПРОВЕРКА ЗАВЕРШЕНИЯ БАТЧА И АВТОПЕРЕЗАГРУЗКА
   useEffect(() => {
     if (sessionList.length > 0 && index >= sessionList.length) {
-      setIsSessionComplete(true);
-      setIndex(0);
+      // Батч закончился
+      if (allRemainingList.length > 0) {
+        // Есть слова, не отвеченные ЛОКАЛЬНО, загружаем новый батч
+        loadNewBatch();
+      } else {
+        // Нет слов, не отвеченных ЛОКАЛЬНО
+        setSessionList([]);
+        setIsLessonFullyComplete(true); // ПОЛНОЕ ЗАВЕРШЕНИЕ
+      }
     }
-  }, [index, sessionList.length]);
+  }, [index, sessionList.length, allRemainingList.length, loadNewBatch]);
 
   // --- Логика переходов и проверки ---
 
   const advance = (delay = 0) => {
     setTimeout(() => {
-      // Переход к следующему индексу в рамках sessionList
       setIndex((i) => i + 1);
       setInput("");
       setCheckState(null);
@@ -155,11 +186,16 @@ export default function WritingMode() {
     const correct = normalize(word.de) === normalize(input);
 
     if (correct) {
-      // ✅ Отмечаем как выученное в Redux ТОЛЬКО для режима 'writing'
-      dispatch(markLearned({ word, mode: "writing" }));
       setCheckState("correct");
 
-      // Даем пользователю увидеть "Верно!" и переходим
+      // 💡 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Отмечаем слово как "выученное" ЛОКАЛЬНО
+      const key = `${word.de}-${word.lessonId}`;
+      setSessionLearnedSet((prevSet) => {
+        const newSet = new Set(prevSet);
+        newSet.add(key);
+        return newSet;
+      });
+
       advance(1200);
     } else {
       setCheckState("wrong");
@@ -168,34 +204,27 @@ export default function WritingMode() {
   };
 
   const handleNext = () => {
-    // Используется для перехода после ошибки или после просмотра подсказки
     advance(0);
   };
 
   const handleShowHint = () => {
     if (!showHint) {
       setShowHint(true);
-      setCheckState("wrong");
+      if (checkState !== "correct") setCheckState("wrong");
     } else {
-      // Скрываем подсказку
       setShowHint(false);
       setCheckState(null);
-      // Опционально: Очистить поле, чтобы пользователь попробовал снова
       setInput("");
     }
   };
 
-  // Обработка нажатия Enter
   const handleKeyDown = (e) => {
     if (e.key === "Enter") {
-      // Если ответ верный, кнопка проверки отключена, ничего не делаем.
       if (checkState === "correct") return;
 
-      // Если была ошибка и ответ показан, Enter переходит к следующему
       if (checkState === "wrong" && showHint) {
         handleNext();
       } else {
-        // В остальных случаях (первая проверка или ошибка без подсказки), проверяем
         handleCheck();
       }
     }
@@ -205,64 +234,41 @@ export default function WritingMode() {
     navigate(`/lesson/${lessonId}`);
   };
 
-  // 💡 ФУНКЦИЯ: Сброс прогресса ТОЛЬКО для WritingMode
+  // 💡 ФУНКЦИЯ: Сброс прогресса (ИСПРАВЛЕНО ДЛЯ СТАБИЛЬНОСТИ)
   const handleRepeatLesson = useCallback(() => {
     if (
       window.confirm(
         "Вы уверены? Это действие удалит прогресс для этого урока ТОЛЬКО в режиме ПИСЬМО."
       )
     ) {
+      // Сброс Redux-прогресса
       dispatch(clearLessonProgress({ lessonId, mode: "writing" }));
-      handleGoBack();
+
+      // 💡 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Сброс ЛОКАЛЬНОГО прогресса
+      setSessionLearnedSet(new Set());
+
+      // Сброс локальных состояний для немедленного выхода из LessonComplete
+      setSessionList([]);
+      setIndex(0);
+      setIsLessonFullyComplete(false); // Гарантируем выход из экрана завершения
     }
-  }, [dispatch, lessonId, navigate, handleGoBack]);
+  }, [dispatch, lessonId]);
 
   // --- UI Рендеринг ---
 
-  // 1. Если все слова в пуле выучены
-  if (allRemainingList.length === 0 && list && list.length > 0)
+  // 1. Если урок полностью завершен (используем локальный флаг для стабильности)
+  if (isLessonFullyComplete)
     return (
       <LessonComplete
         lessonId={lessonId}
         onGoBack={handleGoBack}
-        onRepeat={handleRepeatLesson} // 💡 ИСПОЛЬЗУЕМ handleRepeatLesson
+        message="Урок полностью завершен!"
+        repeatText="Повторить урок полностью (Сбросить прогресс)"
+        onRepeat={handleRepeatLesson}
       />
     );
 
-  // 2. Если сессия завершена (конец батча)
-  if (isSessionComplete) {
-    return (
-      <div className="p-12 text-sky-600 text-center text-xl font-semibold bg-white rounded-xl shadow-lg m-6 dark:bg-gray-800 dark:text-sky-400 dark:shadow-2xl">
-        <span role="img" aria-label="trophy" className="text-3xl">
-          🏆
-        </span>{" "}
-        Вы завершили текущий батч из {MAX_SESSION_SIZE} слов. <br />
-        Осталось слов в уроке: {allRemainingList.length}.
-        <div className="mt-4">
-          {/* Кнопка для старта нового батча */}
-          <button
-            onClick={() => {
-              // Сброс состояния для загрузки нового батча
-              setIsSessionComplete(false);
-              setSessionList([]);
-              setIndex(0);
-            }}
-            className="mt-4 mr-3 px-4 py-2 bg-sky-500 text-white rounded-xl hover:bg-sky-600 transition font-semibold dark:bg-sky-600 dark:hover:bg-sky-700"
-          >
-            Начать следующий батч
-          </button>
-          <button
-            onClick={handleGoBack}
-            className="mt-4 px-4 py-2 bg-gray-300 text-gray-800 rounded-xl hover:bg-gray-400 transition font-semibold dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-50"
-          >
-            К уроку
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // 3. Если слово еще не загружено (initial load)
+  // 2. Если слово еще не загружено (initial load или переключение батча)
   if (!word) return null;
 
   // Классы для поля ввода на основе состояния
@@ -278,21 +284,13 @@ export default function WritingMode() {
 
   return (
     <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
-      {/* Прогресс */}
-      <div className="w-full max-w-lg mb-8 text-center">
-        <div className="text-sm font-medium text-gray-600 mb-2 dark:text-gray-400">
-          Слово {index + 1} из {sessionList.length} (Батч)
-          <span className="block text-xs text-gray-400 mt-1 dark:text-gray-500">
-            Осталось всего невыученных: {allRemainingList.length}
-          </span>
-        </div>
-        <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
-          <div
-            className="bg-sky-500 h-2.5 rounded-full transition-all duration-300"
-            style={{ width: `${((index + 1) / sessionList.length) * 100}%` }}
-          ></div>
-        </div>
-      </div>
+      {/* Прогресс-бар с использованием ProgressBar */}
+      <ProgressBar
+        current={index}
+        totalInSession={sessionList.length}
+        totalRemaining={totalRemaining}
+        roundInfo={`(Слов в батче: ${sessionList.length} / Всего осталось: ${totalRemaining})`}
+      />
 
       {/* Слово для перевода */}
       <div className="p-8 bg-white rounded-2xl shadow-lg mb-8 w-full max-w-md text-center dark:bg-gray-800 dark:shadow-xl">
@@ -309,15 +307,14 @@ export default function WritingMode() {
         value={input}
         onChange={(e) => {
           setInput(e.target.value);
-          // При вводе сбрасываем состояние ошибки
           if (checkState === "wrong" && !showHint) setCheckState(null);
-          if (showHint) setShowHint(false); // Скрываем подсказку при новом вводе
+          if (showHint) setShowHint(false);
         }}
         onKeyDown={handleKeyDown}
         className={`rounded-xl p-4 w-full max-w-md text-xl text-center transition-colors duration-200 ${inputClass}`}
         placeholder="Введите немецкое слово..."
         autoFocus
-        disabled={checkState === "correct"} // Деактивируем после верного ответа
+        disabled={checkState === "correct"}
       />
 
       {/* Обратная связь */}

@@ -8,7 +8,6 @@ import { HiCheckCircle, HiArrowPath, HiXCircle } from "react-icons/hi2";
  * @param {Array} [props.wordsToLearn] - Список слов, просмотренных в сессии (для режима слов). По умолчанию [].
  * @param {function} props.onRestart - Функция для перезапуска текущего режима (сброс индекса/состояния).
  * @param {function} props.onClose - Функция для закрытия модального окна и перехода.
- * @param {function} [props.onMarkAll] - Функция для отметки всех слов как выученных. (Используется только в режиме слов).
  * @param {string} props.modeName - Название текущего режима.
  * @param {number} [props.completedItemsCount] - Количество завершенных элементов (для режима предложений).
  * @param {number} [props.remainingCount] - Сколько элементов осталось для следующего батча.
@@ -18,7 +17,7 @@ export default function StudyCompletionModal({
   wordsToLearn = [],
   onRestart,
   onClose,
-  onMarkAll,
+  // ❌ onMarkAll удален из пропсов
   modeName,
   completedItemsCount,
   remainingCount = 0,
@@ -36,32 +35,43 @@ export default function StudyCompletionModal({
   // --- Заголовки и Тексты ---
 
   let titleText = "Сессия завершена!";
-  if (isSentenceMode && remainingCount > 0) {
-    titleText = "Батч завершен";
-  } else if (isSentenceMode && isFullLessonComplete) {
-    titleText = "Отличная работа!";
-  } else if (!isSentenceMode && remainingCount === 0) {
-    titleText = "Поздравляем!"; // Весь урок слов завершен
-  }
+  let iconColorClass = "text-green-500";
+  let iconComponent = HiCheckCircle;
 
-  let descriptionText;
   if (isSentenceMode && isFullLessonComplete) {
-    descriptionText = `Вы прошли все ${completedCount} предложений в этом уроке!`;
+    titleText = "Отличная работа! Урок завершен.";
+    iconColorClass = "text-green-500";
   } else if (isSentenceMode && remainingCount > 0) {
-    descriptionText = `Вы завершили ${completedCount} предложений. Осталось: ${remainingCount}.`;
-  } else if (isSentenceMode && remainingCount === 0 && !isFullLessonComplete) {
-    descriptionText = `Вы завершили ${completedCount} предложений. Нажмите "Выйти", чтобы увидеть полный прогресс.`;
-  } else {
-    // Режим слов
-    descriptionText = `Вы прошли **${completedCount}** слов в режиме "${modeName}".`;
+    titleText = "Батч завершен";
+    iconColorClass = "text-sky-500";
+  } else if (!isSentenceMode && !isFullLessonComplete) {
+    titleText = "Сессия завершена!";
+    iconColorClass = "text-sky-500";
+  } else if (!isSentenceMode && isFullLessonComplete) {
+    titleText = "Поздравляем! Урок завершен.";
+    iconColorClass = "text-green-500";
   }
 
+  // Определяем текст описания
+  let descriptionText;
+  if (isFullLessonComplete) {
+    descriptionText = `Вы прошли все ${completedCount} ${
+      isSentenceMode ? "предложений" : "слов"
+    } в этом уроке!`;
+  } else if (isSentenceMode && remainingCount > 0) {
+    descriptionText = `Вы завершили ${completedCount} предложений. Осталось: **${remainingCount}**.`;
+  } else {
+    // Режим слов или режим предложений без оставшихся батчей
+    descriptionText = `Вы прошли **${completedCount}** ${
+      isSentenceMode ? "элементов" : "слов"
+    } в режиме "${modeName}".`;
+  }
+
+  // Определяем текст кнопки "Повторить/Продолжить"
   const restartButtonText =
     isSentenceMode && remainingCount > 0
-      ? "Продолжить / Загрузить следующий батч"
-      : "Повторить урок";
-
-  const showMarkAllButton = !isSentenceMode; // Кнопка "Отметить все" только для режимов слов
+      ? "Продолжить / Следующий батч"
+      : "Повторить сессию";
 
   // --- UI Рендеринг ---
 
@@ -69,7 +79,10 @@ export default function StudyCompletionModal({
     <div className="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm transform transition-all duration-300 scale-100 dark:bg-gray-800">
         <div className="text-center mb-6">
-          <HiCheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
+          {/* Динамическая иконка и цвет */}
+          <iconComponent
+            className={`w-12 h-12 ${iconColorClass} mx-auto mb-3`}
+          />
           <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-50">
             {titleText}
           </h2>
@@ -79,29 +92,30 @@ export default function StudyCompletionModal({
         </div>
 
         <div className="flex flex-col gap-3">
-          {/* Кнопка "Отметить все как выученные" (Только для режима слов) */}
-          {showMarkAllButton && (
+          {/* 💡 НОВАЯ КНОПКА: "Следующий" или "Выйти" */}
+          {/* Если весь урок завершен, эта кнопка не нужна, остается только Выйти и Повторить */}
+          {!isFullLessonComplete && (
             <button
-              onClick={onMarkAll}
-              className="flex items-center justify-center px-4 py-3 bg-green-600 text-white rounded-xl font-bold shadow-md hover:bg-green-700 transition duration-150 dark:bg-green-700 dark:hover:bg-green-800"
+              onClick={onRestart} // Используем onRestart для перехода к следующему батчу/повтора сессии
+              className="flex items-center justify-center px-4 py-3 bg-sky-500 text-white rounded-xl font-bold shadow-md hover:bg-sky-600 transition duration-150 dark:bg-sky-600 dark:hover:bg-sky-700"
             >
-              <HiCheckCircle className="w-5 h-5 mr-2" />
-              Отметить все {completedCount} как выученные
+              <HiArrowPath className="w-5 h-5 mr-2" />
+              {restartButtonText}
             </button>
           )}
 
-          {/* Кнопка "Повторить" / "Продолжить" (Обязательная) */}
-          <button
-            onClick={onRestart}
-            className={`flex items-center justify-center px-4 py-3 text-white rounded-xl font-semibold transition duration-150 ${
-              showMarkAllButton
-                ? "bg-sky-500 hover:bg-sky-600 dark:bg-sky-600 dark:hover:bg-sky-700"
-                : "bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-800"
-            }`}
-          >
-            <HiArrowPath className="w-5 h-5 mr-2" />
-            {restartButtonText}
-          </button>
+          {/* Кнопка "Повторить сессию" (Только если урок НЕ завершен, иначе становится главной кнопкой) 
+             Если урок полностью завершен, кнопка выше исчезает, и эта становится "Повторить урок".
+          */}
+          {!isFullLessonComplete && (
+            <button
+              onClick={onRestart}
+              className="flex items-center justify-center px-4 py-3 bg-green-600 text-white rounded-xl font-semibold transition duration-150 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-800"
+            >
+              <HiArrowPath className="w-5 h-5 mr-2" />
+              Повторить текущую сессию
+            </button>
+          )}
 
           {/* Кнопка "Выход" */}
           <button

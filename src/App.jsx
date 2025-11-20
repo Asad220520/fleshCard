@@ -2,7 +2,7 @@ import React from "react";
 import { Provider } from "react-redux";
 import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
 import MobileHeader from "./components/MobileHeader";
-import LessonsList from "./pages/LessonsList"; // Компонент, который использует languageId
+import LessonsList from "./pages/lessons/LessonsList.jsx"; // Компонент, который использует languageId
 import LearnedWords from "./pages/LearnedWords";
 import LessonWords from "./pages/LessonWords";
 
@@ -20,6 +20,7 @@ import AddLessonPage from "./pages/AddLessonPage.jsx";
 import Header from "./components/Header.jsx";
 import { store } from "./store/index.js";
 import Checkout from "./pages/Checkout.jsx";
+import FolderContentPage from "./pages/lessons/FolderContentPage.jsx";
 
 export default function App() {
   return (
@@ -37,19 +38,22 @@ export default function App() {
               <Route path="/" element={<LessonsList />} />
 
               {/* 🟢 ДОБАВЛЕНО/ИСПРАВЛЕНО: Явный маршрут для /lessons-list */}
-              <Route path="/lessons-list" element={<LessonsList />} />
-
+              {/* <Route path="/lessons-list" element={<LessonsList />} /> */}
+              <Route
+                path="/folder/:languageId"
+                element={<FolderContentPage />}
+              />
               {/* 2. ФИЛЬТРАЦИЯ ПО ЯЗЫКУ: /lessons-list/de */}
               <Route
                 path="/lessons-list/:languageId"
                 element={<LessonsList />}
               />
-
-              {/* 3. СТРАНИЦА УРОКА: /lessons-list/de/moko */}
               <Route
                 path="/lessons-list/:languageId/:lessonId"
                 element={<LessonPage />}
               />
+
+              {/* 3. СТРАНИЦА УРОКА: /lessons-list/de/moko */}
 
               {/* 4. СТРАНИЦА УРОКА (без указания языка, если вы используете такой роутинг) */}
               <Route path="/lesson/:lessonId" element={<LessonPage />} />
@@ -61,7 +65,7 @@ export default function App() {
               <Route path="/profile" element={<Profile />} />
               <Route path="/add-lesson" element={<AddLessonPage />} />
               <Route
-                path="/add-lesson/:editLessonId"
+                path="/edit-lesson/:editLessonId"
                 element={<AddLessonPage />}
               />
               <Route

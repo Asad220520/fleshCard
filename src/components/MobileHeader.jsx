@@ -52,7 +52,6 @@ const MobileHeader = ({ label = "Назад", className = "" }) => {
   return (
     <header
       className={`
-        // Фиксируем внизу
         fixed bottom-0 left-0 right-0 w-full
         bg-white shadow-2xl py-1 px-2 z-50
         flex justify-around items-center
@@ -63,7 +62,6 @@ const MobileHeader = ({ label = "Назад", className = "" }) => {
         ${isVisible ? "translate-y-0" : "translate-y-full"}
 
         // Скрываем компонент на десктопе
-        md:hidden
       `}
     >
       {/* 1. Кнопка "Главная" */}

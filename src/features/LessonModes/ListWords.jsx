@@ -20,7 +20,6 @@ import {
 } from "react-icons/hi";
 
 // 💡 КОНСТАНТЫ:
-// const LANG_STORAGE_KEY = "selectedTtsLang"; // 🔴 Удалено. Больше не используется.
 const VOICE_STORAGE_KEY = "selectedTtsVoiceName";
 const ALL_MODES = [
   "flashcards",
@@ -115,6 +114,13 @@ export default function ListWords() {
     learnedSentencePuzzle,
   ]);
 
+  // 💡 ВЫЧИСЛЯЕМ СТАТУС "ВСЕ ВЫУЧЕНЫ"
+  const allWordsLearned = useMemo(() => {
+    if (words.length === 0) return false;
+    // Проверяем, что каждое слово присутствует в learnedSet
+    return words.every((word) => learnedSet.has(`${word.de}-${word.lessonId}`));
+  }, [words, learnedSet]);
+
   // --- Загрузка данных урока при обновлении ---
   useEffect(() => {
     const savedLessons = loadLessons();
@@ -157,6 +163,32 @@ export default function ListWords() {
       // Используем мастер-действие, которое сохранит во ВСЕ режимы
       dispatch(markMasterLearned({ word: wordData }));
     }
+  };
+
+  /** 🚀 НОВЫЙ ОБРАБОТЧИК: Переключает статус "выучено" для ВСЕХ слов. */
+  const handleToggleAllLearned = () => {
+    // Определяем, нужно ли отметить все как выученные (true) или удалить отметку со всех (false)
+    const shouldMarkAllAsLearned = !allWordsLearned;
+
+    words.forEach((word) => {
+      const wordData = { ...word };
+
+      if (shouldMarkAllAsLearned) {
+        // Отметить как выученное во ВСЕХ режимах
+        dispatch(markMasterLearned({ word: wordData }));
+      } else {
+        // Удалить отметку ИЗ ВСЕХ РЕЖИМОВ
+        ALL_MODES.forEach((mode) => {
+          dispatch(
+            removeLearned({
+              de: wordData.de,
+              lessonId: wordData.lessonId,
+              mode,
+            })
+          );
+        });
+      }
+    });
   };
 
   /** Возврат на главную страницу урока */
@@ -204,6 +236,37 @@ export default function ListWords() {
   // 3. Основной вид
   return (
     <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+      {/* 🚀 НОВЫЙ БЛОК: Кнопки "Выбрать все" / "Отменить все" */}
+      <div className="w-full max-w-lg mb-4 flex justify-between space-x-2">
+        <button
+          onClick={handleToggleAllLearned}
+          disabled={words.length === 0}
+          className={`flex items-center justify-center px-4 py-2 rounded-xl text-sm font-semibold transition w-full ${
+            allWordsLearned
+              ? "bg-red-500 text-white hover:bg-red-600 disabled:bg-red-300" // Статус "Все выучены" -> Снять отметку
+              : "bg-sky-500 text-white hover:bg-sky-600 disabled:bg-sky-300" // Статус "Не все выучены" -> Отметить все
+          }`}
+          title={
+            allWordsLearned
+              ? "Снять отметку со всех слов в уроке"
+              : "Отметить все слова в уроке как выученные"
+          }
+        >
+          {allWordsLearned ? (
+            <>
+              <HiEyeOff className="w-5 h-5 mr-1" />
+              <span>Снять отметку со всех ({words.length})</span>
+            </>
+          ) : (
+            <>
+              <HiCheckCircle className="w-5 h-5 mr-1" />
+              <span>Отметить все ({words.length})</span>
+            </>
+          )}
+        </button>
+      </div>
+      {/* --- Конец НОВОГО БЛОКА --- */}
+
       {/* Список слов */}
       <div className="grid grid-cols-1 gap-4 w-full max-w-lg">
         {words.map((word, index) => {

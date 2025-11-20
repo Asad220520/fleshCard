@@ -3,17 +3,18 @@ import { useSelector, useDispatch } from "react-redux";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   markLearned,
+  clearLessonProgress,
 } from "../../store/words/progressSlice";
 import {
-  HiArrowLeft,
   HiLightBulb,
   HiCheckCircle,
   HiOutlineXCircle,
   HiBookOpen,
   HiRefresh,
 } from "react-icons/hi";
+import LessonComplete from "../../components/LessonComplete";
 import AudioPlayer from "../../components/AudioPlayer";
-// import { lessons } from "../../data"; // Предположительно, не требуется
+import ProgressBar from "../../components/UI/ProgressBar"; // 💡 ДОБАВЛЕН ИМПОРТ ProgressBar
 
 // --- Вспомогательная функция для перемешивания массива ---
 function shuffleArray(array) {
@@ -35,29 +36,29 @@ export default function SentencePuzzle() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
 
-  // 💡 Получаем ВСЕ массивы прогресса
+  // 1. ИЗВЛЕКАЕМ ВСЕ LEARNED-СПИСКИ ДЛЯ УНИФИЦИРОВАННОЙ ФИЛЬТРАЦИИ
+  const { list } = useSelector((state) => state.words.navigation);
   const {
-    list,
-    // Остальные массивы импортируем, но не используем в фильтрации, если нужен независимый прогресс
     learnedFlashcards,
     learnedMatching,
     learnedQuiz,
     learnedWriting,
-    learnedSentencePuzzle, // <-- Используем только этот массив для фильтрации
-  } = useSelector((state) => state.words);
-
-  // --- ИЗОЛИРОВАННАЯ логика фильтрации ---
+    learnedSentencePuzzle,
+  } = useSelector((state) => state.words.progress);
 
   const getRemainingWordsWithExamples = useCallback(() => {
     if (!list || list.length === 0) return [];
 
-    // 🛑 ИСПРАВЛЕНИЕ: Используем ТОЛЬКО learnedSentencePuzzle
+    const allLearnedWords = [
+      ...learnedFlashcards,
+      ...learnedMatching,
+      ...learnedQuiz,
+      ...learnedWriting,
+      ...(learnedSentencePuzzle || []),
+    ];
     const learnedSet = new Set();
-    learnedSentencePuzzle.forEach((w) =>
-      learnedSet.add(`${w.de}-${w.lessonId}`)
-    ); // <-- Только sentence_puzzle
+    allLearnedWords.forEach((w) => learnedSet.add(`${w.de}-${w.lessonId}`));
 
-    // Фильтруем: оставляем слова, которые не выучены и имеют примеры
     return list.filter(
       (w) =>
         w.lessonId === lessonId &&
@@ -68,16 +69,26 @@ export default function SentencePuzzle() {
   }, [
     list,
     lessonId,
-    learnedSentencePuzzle, // <-- В зависимости оставляем только sentence_puzzle
+    learnedFlashcards,
+    learnedMatching,
+    learnedQuiz,
+    learnedWriting,
+    learnedSentencePuzzle,
   ]);
 
-  // ИСПОЛЬЗУЕМ: Отфильтрованный пул слов
   const wordsWithExamples = useMemo(
     () => getRemainingWordsWithExamples(),
     [getRemainingWordsWithExamples]
   );
 
-  // -----------------------------------------------------
+  const totalRemaining = wordsWithExamples.length;
+
+  const totalWordsInLesson = useMemo(
+    () =>
+      list?.filter((w) => w.lessonId === lessonId && w.exde && w.exru).length ||
+      0,
+    [list, lessonId]
+  );
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedWords, setSelectedWords] = useState([]);
@@ -87,15 +98,12 @@ export default function SentencePuzzle() {
 
   const currentWordData = wordsWithExamples[currentIndex];
 
-  // Создаем два массива для плиток и сравнения
   const { correctTiles, correctSentenceForComparison } = useMemo(() => {
     if (!currentWordData)
       return { correctTiles: [], correctSentenceForComparison: [] };
 
-    // 1. Плитки для отображения
     const tiles = currentWordData.exde.split(/\s+/).filter((w) => w.length > 0);
 
-    // 2. Верное предложение для сравнения (очищенное)
     const comparisonWords = tiles.map((word) =>
       word.replace(/[.,/#!$%^&*;:{}=-_`~()]/g, "").toLowerCase()
     );
@@ -108,18 +116,14 @@ export default function SentencePuzzle() {
 
   const [shuffledTiles, setShuffledTiles] = useState([]);
 
-  // 💡 ИСПРАВЛЕННЫЙ ЭФФЕКТ: Инициализация и сброс индекса при изменении пула
   useEffect(() => {
-    // 1. Если пул слов опустел, выходим (чтобы показать "Нет данных")
     if (wordsWithExamples.length === 0) return;
 
-    // 2. Если текущий индекс выходит за пределы нового массива, сбрасываем его на 0.
     if (currentIndex >= wordsWithExamples.length) {
       setCurrentIndex(0);
       return;
     }
 
-    // 3. Инициализация (только если currentIndex указывает на корректное слово)
     if (currentWordData) {
       const tiles = shuffleArray(correctTiles);
       setShuffledTiles(tiles);
@@ -128,20 +132,18 @@ export default function SentencePuzzle() {
       setShowHint(false);
       setShowFeedback(false);
     }
-  }, [currentWordData, correctTiles, wordsWithExamples.length, currentIndex]); // currentIndex добавлен в зависимости
+  }, [currentWordData, correctTiles, wordsWithExamples.length, currentIndex]);
 
-  // --- Обработчики действий ---
+  // --- Обработчики действий (без изменений) ---
 
   const handleTileClick = (word, tileIndex) => {
     if (isCorrect !== null) return;
-
     setSelectedWords((prev) => [...prev, word]);
     setShuffledTiles((prev) => prev.filter((_, index) => index !== tileIndex));
   };
 
   const handleSelectedWordClick = (word, selectedIndex) => {
     if (isCorrect !== null) return;
-
     setShuffledTiles((prev) => shuffleArray([...prev, word]));
     setSelectedWords((prev) =>
       prev.filter((_, index) => index !== selectedIndex)
@@ -156,13 +158,11 @@ export default function SentencePuzzle() {
       .join(" ");
 
     const correctSentenceString = correctSentenceForComparison.join(" ");
-
     const correct = userSentenceForComparison === correctSentenceString;
     setIsCorrect(correct);
     setShowFeedback(true);
 
     if (correct) {
-      // 💡 Отмечаем как выученное ТОЛЬКО в режиме sentence_puzzle
       dispatch(
         markLearned({
           word: { ...currentWordData, mode: TARGET_MODE },
@@ -172,32 +172,17 @@ export default function SentencePuzzle() {
     }
   };
 
-  // 💡 ИСПРАВЛЕННАЯ handleNext для более чистого поведения
   const handleNext = () => {
     const isLastCardInCurrentView =
       currentIndex === wordsWithExamples.length - 1;
 
-    // Сброс фидбэка
     setIsCorrect(null);
     setShowFeedback(false);
 
     if (!isLastCardInCurrentView) {
-      // Если есть следующее слово в текущем массиве, переходим к нему
       setCurrentIndex((prev) => prev + 1);
     } else {
-      // Иначе, это было последнее слово, или пул уже пуст (длина 0).
-
-      // Даем React и Redux микро-цикл на обновление.
-      setTimeout(() => {
-        // Если после обновления пул все еще пуст, завершаем урок.
-        if (wordsWithExamples.length <= 1) {
-          alert("Урок завершен!");
-          navigate(`/lesson/${lessonId}`);
-        } else {
-          // Если Redux удалил слово, и остались другие, useEffect сам сбросит index на 0.
-          setCurrentIndex((prev) => prev + 1);
-        }
-      }, 50);
+      setCurrentIndex((prev) => prev + 1);
     }
   };
 
@@ -209,7 +194,33 @@ export default function SentencePuzzle() {
     setShowFeedback(false);
   };
 
-  // --- Условный рендеринг ---
+  const handleGoBack = () => {
+    navigate(`/lesson/${lessonId}`);
+  };
+
+  const handleRepeatLesson = useCallback(() => {
+    if (
+      window.confirm(
+        "Вы уверены? Это действие удалит прогресс для этого урока ТОЛЬКО в режиме СБОРКА ПРЕДЛОЖЕНИЙ."
+      )
+    ) {
+      dispatch(clearLessonProgress({ lessonId, mode: TARGET_MODE }));
+      setCurrentIndex(0);
+      setIsCorrect(null);
+      setShowFeedback(false);
+    }
+  }, [dispatch, lessonId]);
+
+  // --- Условный рендеринг (без изменений) ---
+  if (wordsWithExamples.length === 0 && totalWordsInLesson > 0) {
+    return (
+      <LessonComplete
+        lessonId={lessonId}
+        onGoBack={handleGoBack}
+        onRepeat={handleRepeatLesson}
+      />
+    );
+  }
 
   if (wordsWithExamples.length === 0) {
     return (
@@ -218,8 +229,8 @@ export default function SentencePuzzle() {
           Нет данных для тренировки предложений
         </h2>
         <p className="text-gray-600 dark:text-gray-300">
-          В этом уроке нет примеров предложений (exde/exru), или вы выучили все
-          слова в этом режиме.
+          В этом уроке нет примеров предложений, или вы выучили все слова в этом
+          режиме.
         </p>
         <button
           onClick={() => navigate(`/lesson/${lessonId}`)}
@@ -231,78 +242,63 @@ export default function SentencePuzzle() {
     );
   }
 
-  // --- UI Рендеринг ---
+  // --- UI Рендеринг (ОПТИМИЗИРОВАННЫЙ) ---
   return (
-    <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-screen dark:bg-gray-900 transition-colors duration-300">
-      {/* Шапка и навигация */}
-      <div className="w-full max-w-xl mb-6 flex justify-between items-center">
-        <button
-          onClick={() => navigate(`/lesson/${lessonId}`)}
-          className="flex items-center text-gray-700 hover:text-gray-800 transition font-semibold dark:text-gray-400 dark:hover:text-gray-300"
-        >
-          <HiArrowLeft className="w-6 h-6 mr-1" />
-          <span className="hidden sm:inline">К уроку</span>
-        </button>
-        <div className="flex items-center text-xl font-extrabold text-gray-800 dark:text-gray-50">
-          <HiBookOpen className="w-6 h-6 mr-2 text-pink-600 dark:text-pink-400" />
-          <span>Предложения: {lessonId.toUpperCase()}</span>
+    <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
+      {/* 1. БОМБОВЫЙ PROGRESS BAR */}
+      <ProgressBar
+        current={currentIndex}
+        totalInSession={wordsWithExamples.length}
+        totalRemaining={totalRemaining}
+        roundInfo={`(Предложения)`}
+      />
+
+      {/* 2. НАЗВАНИЕ РЕЖИМА И СЛОВО-КЛЮЧ (КОМПАКТНО) */}
+      <div className="w-full max-w-xl mb-4 flex justify-between items-center px-2 sm:px-0">
+        <div className="flex items-center text-lg font-extrabold text-gray-800 dark:text-gray-50">
+          <HiBookOpen className="w-5 h-5 mr-1 text-pink-600 dark:text-pink-400" />
+          <span>Сборка предложений</span>
         </div>
-        <div className="text-sm font-bold text-gray-600 dark:text-gray-400">
-          {currentIndex + 1} / {wordsWithExamples.length}
+
+        {/* Ключевое слово для справки (рядом с заголовком) */}
+        <div className="flex flex-col items-end text-right">
+          <div className="font-bold text-lg text-gray-800 flex items-center dark:text-gray-50">
+            {currentWordData?.de}
+            {currentWordData?.de && (
+              <AudioPlayer textToSpeak={currentWordData.de} lang="de-DE" />
+            )}
+          </div>
+          <p className="text-xs text-gray-600 dark:text-gray-300">
+            {currentWordData?.ru}
+          </p>
         </div>
       </div>
 
-      {/* Основная карточка */}
+      {/* 3. ОСНОВНАЯ КАРТОЧКА ЗАДАНИЯ */}
       <div className="w-full max-w-xl bg-white p-6 rounded-xl shadow-2xl border-t-4 border-pink-500 dark:bg-gray-800 dark:border-pink-600 dark:shadow-xl">
-        {/* Слово-ключ (немецкое) */}
-        <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-100 dark:border-gray-700">
-          <div className="flex flex-col">
-            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-              Слово-ключ:
-            </p>
-            <div className="font-bold text-xl text-gray-800 flex items-center dark:text-gray-50">
-              {currentWordData.de}
-              <AudioPlayer textToSpeak={currentWordData.de} lang="de-DE" />
-            </div>
-            <div className="text-gray-600 text-md dark:text-gray-300">
-              {currentWordData.ru}
-            </div>
-          </div>
-
-          {/* Кнопка подсказки */}
-          <button
-            onClick={() => setShowHint(true)}
-            className="flex items-center p-2 rounded-lg text-pink-700 hover:bg-pink-100 dark:text-pink-400 dark:hover:bg-pink-900 transition"
-            disabled={showHint}
-          >
-            <HiLightBulb className="w-5 h-5 mr-1" />
-            {showHint ? "Подсказка" : "Перевод"}
-          </button>
+        {/* А. БЛОК ПОСТОЯННОЙ ПОДСКАЗКИ (РУССКИЙ ПЕРЕВОД) */}
+        <div className="p-3 mb-4 rounded-lg bg-pink-50 dark:bg-pink-900/10 border-l-4 border-pink-300 dark:border-pink-700">
+          <p className="text-sm font-medium text-pink-700 dark:text-pink-400 mb-1">
+            Переведите это предложение:
+          </p>
+          <p className="text-lg font-bold text-gray-800 dark:text-gray-50 italic">
+            {currentWordData.exru}
+          </p>
         </div>
 
-        {/* Перевод (Подсказка) */}
-        {showHint && (
-          <div className="p-3 mb-4 bg-gray-100 rounded-lg dark:bg-gray-700">
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
-              Русский перевод:{" "}
-              <span className="italic">{currentWordData.exru}</span>
-            </p>
-          </div>
-        )}
-
-        {/* Контейнер для сбора предложения */}
+        {/* Б. КОНТЕЙНЕР ДЛЯ СБОРА ПРЕДЛОЖЕНИЯ */}
         <div
-          className={`min-h-24 p-4 border-2 rounded-lg mb-4 
+          className={`min-h-24 p-4 border-2 rounded-xl mb-4 
             ${
               isCorrect === true
                 ? "border-green-500 bg-green-50 dark:bg-green-900/30"
                 : isCorrect === false
-                ? "border-red-500 bg-red-50 dark:bg-red-900/30"
+                ? "border-red-500 bg-red-50 shake-animation dark:bg-red-900/30" // 💡 Добавил анимацию
                 : "border-gray-300 border-dashed dark:border-gray-600"
             }`}
         >
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
-            Соберите немецкое предложение:
+            Ваше немецкое предложение:
           </p>
 
           {selectedWords.length > 0 ? (
@@ -312,7 +308,7 @@ export default function SentencePuzzle() {
                   key={index}
                   onClick={() => handleSelectedWordClick(word, index)}
                   disabled={isCorrect !== null}
-                  className={`px-3 py-1 rounded-lg font-semibold transition shadow-sm
+                  className={`px-3 py-1 rounded-xl font-semibold transition shadow-md 
                     ${
                       isCorrect === true
                         ? "bg-green-500 text-white"
@@ -330,10 +326,10 @@ export default function SentencePuzzle() {
           )}
         </div>
 
-        {/* Плитки для выбора */}
+        {/* В. ПЛИТКИ ДЛЯ ВЫБОРА */}
         <div className="mb-6">
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
-            Выберите слова в правильном порядке:
+            Слова:
           </p>
           <div className="flex flex-wrap gap-2">
             {shuffledTiles.map((word, index) => (
@@ -341,7 +337,7 @@ export default function SentencePuzzle() {
                 key={index}
                 onClick={() => handleTileClick(word, index)}
                 disabled={isCorrect !== null}
-                className="px-3 py-1 rounded-lg border border-gray-300 bg-gray-100 text-gray-800 font-medium hover:bg-gray-200 transition dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 dark:hover:bg-gray-600 shadow-sm"
+                className="px-3 py-1 rounded-xl border border-gray-300 bg-gray-100 text-gray-800 font-medium hover:bg-gray-200 transition dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 dark:hover:bg-gray-600 shadow-sm disabled:opacity-50"
               >
                 {word}
               </button>
@@ -349,7 +345,7 @@ export default function SentencePuzzle() {
           </div>
         </div>
 
-        {/* Фидбек и кнопки действий */}
+        {/* Г. ФИДБЕК И КНОПКИ ДЕЙСТВИЙ */}
         {showFeedback && (
           <div
             className={`p-4 rounded-lg mb-4 ${
@@ -371,9 +367,7 @@ export default function SentencePuzzle() {
                     : "text-red-800 dark:text-red-200"
                 }`}
               >
-                {isCorrect
-                  ? "Верно!"
-                  : "Неверно. Попробуйте еще раз или посмотрите правильный ответ."}
+                {isCorrect ? "Верно! Отлично." : "Неверно. Попробуйте еще раз."}
               </span>
             </div>
             {!isCorrect && (
@@ -387,6 +381,7 @@ export default function SentencePuzzle() {
           </div>
         )}
 
+        {/* Кнопки управления (Проверить / Далее) */}
         <div className="flex justify-between items-center pt-4 border-t border-gray-100 dark:border-gray-700">
           <button
             onClick={handleReset}
@@ -418,12 +413,23 @@ export default function SentencePuzzle() {
                     : "bg-sky-500 hover:bg-sky-600"
                 } text-white`}
             >
-              {/* Этот текст будет обновлен после вызова handleNext */}
               {wordsWithExamples.length <= 1 ? "Завершить урок" : "Далее"}
             </button>
           )}
         </div>
       </div>
+
+      {/* Добавляем стили для анимации (обязательно для WOW-эффекта) */}
+      <style>{`
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          20%, 60% { transform: translateX(-5px); }
+          40%, 80% { transform: translateX(5px); }
+        }
+        .shake-animation {
+          animation: shake 0.4s ease-in-out;
+        }
+      `}</style>
     </div>
   );
 }

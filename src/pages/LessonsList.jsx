@@ -20,6 +20,7 @@ import {
   HiFolder,
   HiFolderOpen,
   HiLightBulb,
+  HiFolderAdd,
 } from "react-icons/hi";
 
 // 💡 Глобальные константы (Без изменений)
@@ -50,7 +51,7 @@ const loadFolders = () => {
         de_a1: { id: "de_a1", name: "Немецкий A1", defaultLang: "de" },
         en_main: {
           id: "en_main",
-          name: "Основной Английский",
+          name: " Английский",
           defaultLang: "en",
         },
       };
@@ -172,7 +173,7 @@ const FolderMenu = ({
         className="flex items-center w-full px-4 py-2 text-sm text-sky-600 dark:text-sky-400 hover:bg-gray-100 dark:hover:bg-gray-600"
         role="menuitem"
       >
-        <HiPlus className="w-5 h-5 mr-2" />
+        {/* <HiPlus className="w-5 h-5 mr-2" /> */}
         Добавить урок
       </button>
       <button
@@ -1149,7 +1150,7 @@ export default function LessonsList() {
             setShowImportOrAddModal(true);
           }
         }}
-        className={`fixed bottom-16 right-6 sm:bottom-8 sm:right-8 
+        className={`fixed bottom-26 right-6 sm:bottom-28 sm:right-18 
                     bg-sky-600 text-white w-14 h-14 flex items-center justify-center 
                     rounded-full text-3xl font-light shadow-2xl 
                     hover:bg-sky-700 active:scale-95 transition duration-150 z-[201]`}
@@ -1164,7 +1165,11 @@ export default function LessonsList() {
             : "Добавить/Импортировать"
         }
       >
-        <HiPlus className="w-8 h-8" />
+        {selectedFolderId ? (
+          <HiPlus className="w-8 h-8" />
+        ) : (
+          <HiFolderAdd className="w-7 h-7" />
+        )}
       </button>
       {showImportOrAddModal && (
         <ImportOrAddModal

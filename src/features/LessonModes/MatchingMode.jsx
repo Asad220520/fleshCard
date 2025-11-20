@@ -1,26 +1,24 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useParams, useNavigate } from "react-router-dom";
-import {
-  markLearned,
-  clearLessonProgress,
-} from "../../store/words/progressSlice";
+import { clearLessonProgress } from "../../store/words/progressSlice";
 import { selectLesson } from "../../store/words/wordsSlice";
 import { lessons } from "../../data";
 
-// ❗ ИМПОРТЫ ДЛЯ ЖИЗНЕЙ И ТАЙМЕРА (Оставлены для логики, но удалены из UI)
 import { loseLife, resetLives } from "../../store/lives/livesSlice";
 import {
   setGameOver,
   clearGameOver,
 } from "../../store/gameState/gameStateSlice";
 
-import { HiChevronRight, HiClock } from "react-icons/hi"; // HiArrowLeft удален
+import { HiClock, HiHeart, HiChevronRight } from "react-icons/hi"; // Добавил HiChevronRight для разделителя
 import LessonComplete from "../../components/LessonComplete";
+import ProgressBar from "../../components/UI/ProgressBar";
 
 // КОНСТАНТЫ
-const CHUNK_SIZE = 5; // Размер батча
-const MAX_LIVES = 3;
+const CHUNK_SIZE = 3;
+const MAX_ROUNDS = 3;
+const TARGET_MODE = "matching";
 
 // --- ФУНКЦИЯ ФОРМАТИРОВАНИЯ ВРЕМЕНИ ---
 const formatTime = (seconds) => {
@@ -36,15 +34,14 @@ export default function MatchingMode() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  // ✅ REDUX СОСТОЯНИЯ
   const currentLives = useSelector((state) => state.lives.count);
   const { gameOverTimestamp, cooldownDuration } = useSelector(
     (state) => state.gameState
   );
-
   const { list } = useSelector((state) => state.words.navigation);
 
-  // ❗ ИМПОРТ ВСЕХ ПРОГРЕССОВ ДЛЯ ЕДИНОЙ ЛОГИКИ ФИЛЬТРАЦИИ
+  // --- Состояния Компонента ---
+  const [sessionList, setSessionList] = useState([]);
   const {
     learnedFlashcards,
     learnedMatching,
@@ -53,11 +50,9 @@ export default function MatchingMode() {
     learnedSentencePuzzle,
   } = useSelector((state) => state.words.progress);
 
-  // ❗ ИЗМЕНЕННЫЕ СОСТОЯНИЯ ДЛЯ ЛОГИКИ БАТЧА
   const [index, setIndex] = useState(0);
-  const [chunk, setChunk] = useState([]);
-  const [wordsToReview, setWordsToReview] = useState([]);
-  const [isSessionComplete, setIsSessionComplete] = useState(false);
+  const [chunk, setChunk] = useState([]); // Текущий батч слов
+  const [wordsToReview, setWordsToReview] = useState([]); // Слова, которые были провалены в текущей сессии
 
   const [left, setLeft] = useState([]);
   const [right, setRight] = useState([]);
@@ -66,8 +61,12 @@ export default function MatchingMode() {
   const [incorrectRight, setIncorrectRight] = useState(null);
   const [timeLeft, setTimeLeft] = useState(0);
 
-  // --- ЛОГИКА ТАЙМЕРА И GAME OVER ---
+  // --- Состояния Сессии ---
+  const [sessionRoundCount, setSessionRoundCount] = useState(0);
+  const [isSessionCompletedByLimit, setIsSessionCompletedByLimit] =
+    useState(false);
 
+  // --- Логика Game Over и Таймера ---
   useEffect(() => {
     if (currentLives <= 0 && !gameOverTimestamp) {
       dispatch(setGameOver({ timestamp: Date.now() }));
@@ -105,10 +104,9 @@ export default function MatchingMode() {
     navigate(`/checkout/restore-lives/${lessonId}`);
   };
 
-  // --- Расчет пула слов (ОБЪЕДИНЕННАЯ ЛОГИКА) ---
+  // --- Расчет пула слов ---
 
   const getRemainingList = useCallback(() => {
-    // Объединяем прогресс со всех режимов для строгого отбора
     const allLearnedWords = [
       ...learnedFlashcards,
       ...learnedMatching,
@@ -123,7 +121,6 @@ export default function MatchingMode() {
     return (
       list?.filter((word) => {
         const key = `${word.de}-${word.lessonId}`;
-        // Фильтруем, используя объединенный Set
         return word.lessonId === lessonId && !learnedSet.has(key);
       }) || []
     );
@@ -148,14 +145,30 @@ export default function MatchingMode() {
   );
 
   const totalWordsInLesson = allLessonWords.length;
-  const totalCompleted = totalWordsInLesson - allRemainingList.length;
+
+  // Актуальный расчет totalRemaining для ProgressBar
+  const totalRemaining = useMemo(() => {
+    const wordsInReviewKeys = new Set(wordsToReview.map((w) => w.de));
+
+    const uniqueNewRemaining = allRemainingList.filter(
+      (word) => !wordsInReviewKeys.has(word.de)
+    );
+
+    return uniqueNewRemaining.length + wordsToReview.length;
+  }, [allRemainingList, wordsToReview]);
 
   // --- ЛОГИКА ЗАГРУЗКИ БАТЧА ---
 
   const loadNextBatch = useCallback(() => {
+    if (sessionRoundCount >= MAX_ROUNDS) {
+      setIsSessionCompletedByLimit(true);
+      return;
+    }
+
     const reviewBatch = wordsToReview;
     const needNewWords = CHUNK_SIZE - reviewBatch.length;
 
+    // Фильтруем оставшиеся слова, исключая те, что уже в wordsToReview
     const remainingForNewBatch = allRemainingList.filter(
       (word) => !reviewBatch.some((r) => r.de === word.de)
     );
@@ -171,26 +184,34 @@ export default function MatchingMode() {
       setLeft([...nextChunk].sort(() => Math.random() - 0.5));
       setRight([...nextChunk].sort(() => Math.random() - 0.5));
 
-      setIsSessionComplete(false);
       setWordsToReview([]);
       setMatched([]);
       setSelectedLeft(null);
       setIncorrectRight(null);
+
+      // Обновление sessionList для ProgressBar
+      setSessionList((prev) => [...prev, ...nextChunk]);
+
       setIndex((prev) => prev + 1);
-    } else if (reviewBatch.length === 0 && remainingForNewBatch.length === 0) {
-      setIsSessionComplete(true);
+      setSessionRoundCount((prev) => prev + 1);
+    } else {
+      // Если батч пуст, значит, слова закончились
+      setChunk([]);
+      if (allRemainingList.length === 0) {
+        setIsSessionCompletedByLimit(true); // Завершаем сессию, если слов нет
+      }
     }
-  }, [allRemainingList, wordsToReview]);
+  }, [allRemainingList, wordsToReview, sessionRoundCount, MAX_ROUNDS]);
 
-  // 💡 handleRestartSession теперь использует loadNextBatch для инициализации
   const handleRestartSession = useCallback(() => {
-    setIsSessionComplete(false);
+    // Сброс локальных состояний сессии
     setWordsToReview([]);
-    setIndex(0); // Сбрасываем индекс батча
-
-    // ❗ Самый чистый способ: просто вызываем loadNextBatch
-    loadNextBatch();
-  }, [loadNextBatch]); // Зависит от loadNextBatch
+    setSessionRoundCount(0);
+    setIsSessionCompletedByLimit(false);
+    setSessionList([]);
+    setChunk([]);
+    setIndex(0);
+  }, []);
 
   // --- Эффекты загрузки и подготовки данных ---
 
@@ -201,12 +222,23 @@ export default function MatchingMode() {
   }, [list, dispatch, lessonId]);
 
   useEffect(() => {
-    if (allRemainingList.length > 0 && chunk.length === 0 && index === 0) {
+    // Логика запуска: срабатывает, когда есть слова и нет активного батча,
+    // и сессия не завершена по лимиту (или только что сброшена).
+    if (
+      allRemainingList.length > 0 &&
+      chunk.length === 0 &&
+      !isSessionCompletedByLimit
+    ) {
       loadNextBatch();
     }
-  }, [allRemainingList, loadNextBatch, chunk.length, index]);
+  }, [
+    allRemainingList,
+    loadNextBatch,
+    chunk.length,
+    isSessionCompletedByLimit,
+  ]);
 
-  // --- Обработчики кликов и навигации ---
+  // --- Обработчики кликов и навигации (без изменений в логике) ---
 
   const handleLeftSelect = (word) => {
     if (matched.includes(word.de) || currentLives <= 0) return;
@@ -242,62 +274,62 @@ export default function MatchingMode() {
       }
 
       setIncorrectRight(word.de);
+      setSelectedLeft(null);
       setTimeout(() => setIncorrectRight(null), 700);
     }
   };
 
   const handleGoBack = () => navigate(`/lesson/${lessonId}`);
 
-  // ❗ ИСПРАВЛЕНА: Теперь вызывает handleRestartSession для немедленной перезагрузки
   const handleRepeatLesson = useCallback(() => {
     if (
       window.confirm(
         "Вы уверены? Это действие удалит прогресс для этого урока ТОЛЬКО в режиме СОПОСТАВЛЕНИЕ."
       )
     ) {
-      dispatch(clearLessonProgress({ lessonId, mode: "matching" }));
+      // 1. Сбрасываем Redux прогресс
+      dispatch(clearLessonProgress({ lessonId, mode: TARGET_MODE }));
       dispatch(resetLives());
-      handleRestartSession(); // 💡 Немедленный старт новой сессии
+
+      // 2. Сброс локальных состояний
+      setWordsToReview([]);
+      setSessionRoundCount(0);
+      setIsSessionCompletedByLimit(false);
+      setSessionList([]);
+      setIndex(0);
+      setChunk([]);
     }
-  }, [dispatch, lessonId, handleRestartSession]);
+  }, [dispatch, lessonId]);
 
   // --- Переход к следующему батчу ---
-
   useEffect(() => {
-    // 🟢 Если текущий чанк завершен (все слова сопоставлены)
     if (chunk.length > 0 && matched.length === chunk.length) {
-      // ❗ Выполняем MarkLearned в Redux
-      chunk.forEach((word) => {
-        if (!wordsToReview.some((w) => w.de === word.de)) {
-          dispatch(markLearned({ word: word, mode: "matching" }));
-        }
-      });
-
-      // ❗ Используем небольшую задержку, чтобы дать Redux обновиться,
-      // прежде чем проверять totalNextWords в UI завершения сессии.
+      // АВТОМАТИЧЕСКАЯ ЗАГРУЗКА СЛЕДУЮЩЕГО БАТЧА
       setTimeout(() => {
-        setIsSessionComplete(true);
-      }, 300);
+        loadNextBatch();
+      }, 500);
     }
-  }, [matched, chunk, dispatch, wordsToReview]);
+  }, [matched, chunk, loadNextBatch]);
 
-  // ❗ ПРОВЕРКА GAME OVER И ТАЙМЕРА (ЭКРАН ОЖИДАНИЯ)
+  // --- РЕНДЕРИНГ ЭКРАНОВ СОСТОЯНИЯ (ВОССТАНОВЛЕНИЕ ПОРЯДКА) ---
+
+  // 1. ❗ ПРОВЕРКА GAME OVER И ТАЙМЕРА (ЭКРАН ОЖИДАНИЯ)
   if (currentLives <= 0 && gameOverTimestamp) {
     if (timeLeft > 0) {
       return (
-        <div className="p-12 text-center text-gray-800 dark:text-gray-50 bg-gray-50 min-h-[50vh] dark:bg-gray-900 transition-colors duration-300 w-full max-w-lg mx-auto rounded-xl shadow-lg mt-10">
-          <h2 className="text-3xl font-extrabold text-red-600 dark:text-red-400 mb-4">
+        <div className="p-12 text-center text-gray-800 dark:text-gray-50 bg-gray-50 min-h-screen dark:bg-gray-900 transition-colors duration-300 w-full max-w-lg mx-auto">
+          <h2 className="text-3xl font-extrabold text-red-600 dark:text-red-400 mb-4 pt-10">
             💔 Жизни закончились!
           </h2>
           <p className="mb-6 font-semibold text-xl">
             Подождите восстановления жизней:
           </p>
-          <div className="text-6xl font-mono font-bold text-sky-600 dark:text-sky-400 mb-8 flex items-center justify-center">
+          <div className="text-6xl font-mono font-bold text-sky-600 dark:text-sky-400 mb-8 flex items-center justify-center p-4 bg-white dark:bg-gray-800 rounded-xl shadow-xl">
             <HiClock className="w-12 h-12 mr-3" />
             {formatTime(timeLeft)}
           </div>
 
-          <p className="mb-4">Или приобретите безлимит (Premium):</p>
+          <p className="mb-4 text-sm text-gray-600 dark:text-gray-300">Или:</p>
           <button
             onClick={handlePurchasePremium}
             className="w-full sm:w-auto px-6 py-3 bg-indigo-600 text-white rounded-xl shadow-md font-bold hover:bg-indigo-700 transition duration-150"
@@ -316,133 +348,95 @@ export default function MatchingMode() {
     }
   }
 
-  const nextRemaining = allRemainingList.length;
-
-  // Экран завершения урока (Проверяем, что не осталось невыученных слов)
+  // 2. Экран завершения урока (по достижении лимита раундов или если слова действительно закончились)
   if (
-    nextRemaining === 0 &&
-    totalWordsInLesson > 0 &&
-    wordsToReview.length === 0
+    isSessionCompletedByLimit ||
+    (totalRemaining === 0 && totalWordsInLesson > 0)
   ) {
+    const isRestartSession = isSessionCompletedByLimit;
+
     return (
       <LessonComplete
         lessonId={lessonId}
         onGoBack={handleGoBack}
-        onRepeat={handleRepeatLesson}
+        message={
+          isRestartSession
+            ? "Вы завершили сессию тренировки! Хотите начать новую?"
+            : "Урок полностью завершен!"
+        }
+        repeatText={
+          isRestartSession
+            ? "Начать новую сессию (Повторить)"
+            : "Повторить урок полностью (Сбросить прогресс)"
+        }
+        onRepeat={() =>
+          isRestartSession ? handleRestartSession() : handleRepeatLesson()
+        }
       />
     );
   }
 
-  // 🟢 ЭКРАН ЗАВЕРШЕНИЯ СЕССИИ (БАТЧА)
-  if (isSessionComplete) {
-    const totalNextWords = nextRemaining + wordsToReview.length;
-
-    // ❗ ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА, ЕСЛИ totalNextWords ВДРУГ ОКАЗЫВАЕТСЯ 0
-    if (totalNextWords <= 0 && totalWordsInLesson > 0) {
-      // Если все слова выучены, но UI еще не обновился, перенаправляем на LessonComplete
-      return (
-        <LessonComplete
-          lessonId={lessonId}
-          onGoBack={handleGoBack}
-          onRepeat={handleRepeatLesson}
-        />
-      );
-    }
-
-    return (
-      <div className="p-12 text-center text-gray-800 dark:text-gray-50 bg-gray-50 min-h-[50vh] dark:bg-gray-900 transition-colors duration-300 w-full max-w-lg mx-auto rounded-xl shadow-lg mt-10">
-        <h2 className="text-3xl font-extrabold text-purple-600 dark:text-purple-400 mb-4">
-          Сессия {index} завершена!
-        </h2>
-
-        {wordsToReview.length > 0 && (
-          <p className="text-red-500 font-bold mb-4">
-            {wordsToReview.length} слов(а) будут повторены в следующем батче.
-          </p>
-        )}
-
-        {totalNextWords > 0 ? (
-          <>
-            <p className="mb-6 font-semibold">
-              Осталось слов (включая повтор): {totalNextWords}
-            </p>
-            <button
-              onClick={loadNextBatch}
-              className="w-full sm:w-auto px-6 py-3 bg-purple-600 text-white rounded-xl shadow-md font-bold hover:bg-purple-700 transition duration-150 flex items-center justify-center mx-auto"
-            >
-              <HiChevronRight className="w-5 h-5 mr-2" />
-              Начать следующий батч
-            </button>
-            <button
-              onClick={handleRestartSession}
-              className="w-full sm:w-auto mt-3 px-6 py-3 bg-gray-300 text-gray-800 rounded-xl font-semibold hover:bg-gray-400 transition duration-150 dark:bg-gray-700 dark:text-gray-50 dark:hover:bg-gray-600 flex items-center justify-center mx-auto"
-            >
-              <HiClock className="w-5 h-5 mr-2" />
-              Повторить текущие слова
-            </button>
-          </>
-        ) : (
-          <p className="text-xl font-bold text-green-600 dark:text-green-400 mb-6">
-            Поздравляем! Вы выучили все слова в этом режиме.
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  // Загрузка
-  if (chunk.length === 0) {
+  // 3. Загрузка (если слов нет вообще, показываем пустой экран)
+  if (totalWordsInLesson > 0 && chunk.length === 0) {
     return (
       <div className="p-6 text-gray-500 text-center dark:bg-gray-900 dark:text-gray-400 min-h-screen">
-        Загрузка или переключение батча...
+        Загрузка или ожидание данных...
       </div>
     );
   }
+
+  if (totalWordsInLesson === 0) {
+    return (
+      <div className="p-12 text-center text-gray-500 bg-gray-50 min-h-screen dark:bg-gray-900">
+        <h2 className="text-xl font-bold text-gray-700 dark:text-gray-50 mb-3">
+          Нет слов для тренировки
+        </h2>
+        <p className="text-gray-600 dark:text-gray-300">
+          В этом уроке нет данных для режима сопоставления.
+        </p>
+        <button
+          onClick={() => navigate(`/lesson/${lessonId}`)}
+          className="mt-4 px-4 py-2 bg-sky-500 text-white rounded-xl hover:bg-sky-600 transition"
+        >
+          ← К уроку
+        </button>
+      </div>
+    );
+  }
+
+  // --- ОСНОВНОЙ РЕНДЕРИНГ ИГРЫ ---
 
   return (
     <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
-      {/* 🛑 УДАЛЕН БЛОК УПРАВЛЕНИЯ И ИНДИКАТОР ЖИЗНЕЙ */}
-
-      {/* Прогресс */}
-      <div className="w-full max-w-lg mb-8 bg-white p-4 rounded-xl shadow-md border border-gray-100 dark:bg-gray-800 dark:shadow-xl dark:border-gray-700">
-        <h2 className="text-sm font-semibold text-gray-700 mb-2 dark:text-gray-300">
-          Прогресс: Батч {index} ({matched.length} из {chunk.length}{" "}
-          сопоставлено)
-        </h2>
-
-        {/* Индикатор прогресса раунда */}
-        <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
-          <div
-            className="bg-purple-500 h-2 rounded-full transition-all duration-300"
-            style={{
-              width: `${(matched.length / (chunk.length || 1)) * 100}%`,
-            }}
-            title={`Совпало ${matched.length} из ${chunk.length} в батче`}
-          ></div>
-        </div>
-
-        {/* 💡 ОБЩИЙ ПРОГРЕСС УРОКА (Теперь согласован с Quiz/Flashcards) */}
-        <div className="mt-3 text-xs text-gray-500 flex justify-between dark:text-gray-400">
-          <span>Осталось всего невыученных: {nextRemaining}</span>
-        </div>
+      {/* 1. АФИГИТЕЛЬНЫЙ HEADER: PROGRESS BAR и ЖИЗНИ */}
+      <div className="w-full max-w-xl mb-6 p-4 bg-white rounded-xl shadow-2xl dark:bg-gray-800 border-b-4 border-indigo-400 dark:border-indigo-600">
+        <ProgressBar
+          current={matched.length}
+          totalInSession={chunk.length}
+          totalRemaining={totalRemaining}
+          roundInfo={`(Раунд ${sessionRoundCount} из ${MAX_ROUNDS})`}
+        />
       </div>
 
-      {/* Контейнер для колонок */}
-      <div className="w-full max-w-lg flex gap-4 sm:gap-8 m">
+      {/* 2. КОНТЕЙНЕР ДЛЯ КОЛОНОК */}
+      <div className="w-full max-w-xl flex flex-col sm:flex-row gap-3 sm:gap-6">
         {/* Колонка 1: Немецкие слова (Левая) */}
-        <div className="flex-1 flex flex-col gap-3 p-3 bg-white rounded-xl shadow-lg border border-gray-100 dark:bg-gray-800 dark:shadow-xl dark:border-gray-700">
+        <div className="flex-1 flex flex-col gap-3 p-3 bg-white rounded-xl shadow-lg border-l-4 border-purple-500 dark:bg-gray-800 dark:shadow-xl dark:border-purple-600">
+          <p className="text-sm font-bold text-purple-600 dark:text-purple-400 mb-1">
+            Немецкий (DE)
+          </p>
           {left.map((w) => {
             const isMatched = matched.includes(w.de);
             const isSelected = selectedLeft?.de === w.de;
 
             let cls =
-              "bg-purple-50 border-2 border-purple-100 hover:bg-purple-100 text-gray-800 dark:bg-gray-700 dark:border-gray-600 dark:hover:bg-gray-600 dark:text-gray-50";
+              "bg-purple-50 border-2 border-purple-100 hover:bg-purple-100 text-gray-800 dark:bg-gray-700 dark:border-gray-600 dark:hover:bg-gray-600 dark:text-gray-50 shadow-md";
             if (isMatched) {
               cls =
-                "bg-green-100 text-green-700 border-green-400 pointer-events-none opacity-60 dark:bg-green-900 dark:text-green-300 dark:border-green-600";
+                "bg-green-100 text-green-700 border-green-400 pointer-events-none opacity-50 dark:bg-green-900 dark:text-green-300 dark:border-green-600 shadow-inner";
             } else if (isSelected) {
               cls =
-                "bg-purple-500 text-white border-purple-700 shadow-xl scale-[1.02]";
+                "bg-purple-600 text-white border-4 border-purple-300 shadow-2xl scale-[1.03] transform-gpu ring-2 ring-purple-500 dark:ring-purple-400"; // Завораживающий эффект
             }
 
             return (
@@ -450,7 +444,7 @@ export default function MatchingMode() {
                 key={w.de + "left"}
                 disabled={isMatched || currentLives <= 0}
                 onClick={() => handleLeftSelect(w)}
-                className={`p-3 rounded-lg text-lg font-medium text-center transition duration-150 transform ${cls}`}
+                className={`p-3 rounded-xl text-lg font-bold text-center transition duration-200 transform ${cls}`}
               >
                 {w.de}
               </button>
@@ -458,28 +452,32 @@ export default function MatchingMode() {
           })}
         </div>
 
-        {/* Разделитель */}
+        {/* Разделитель на мобильных (невидимый) и десктопе */}
         <div className="hidden sm:flex items-center justify-center">
-          <HiChevronRight className="w-10 h-10 text-purple-400" />
+          <HiChevronRight className="w-8 h-8 text-indigo-400" />
         </div>
 
         {/* Колонка 2: Русские слова (Правая) */}
-        <div className="flex-1 flex flex-col gap-3 p-3 bg-white rounded-xl shadow-lg border border-gray-100 dark:bg-gray-800 dark:shadow-xl dark:border-gray-700">
+        <div className="flex-1 flex flex-col gap-3 p-3 bg-white rounded-xl shadow-lg border-l-4 border-sky-500 dark:bg-gray-800 dark:shadow-xl dark:border-sky-600">
+          <p className="text-sm font-bold text-sky-600 dark:text-sky-400 mb-1">
+            Русский (RU)
+          </p>
           {right.map((w) => {
             const isMatched = matched.includes(w.de);
             const isIncorrect = incorrectRight === w.de;
 
             let cls =
-              "bg-sky-50 border-2 border-sky-100 hover:bg-sky-100 text-gray-800 dark:bg-gray-700 dark:border-gray-600 dark:hover:bg-gray-600 dark:text-gray-50";
+              "bg-sky-50 border-2 border-sky-100 hover:bg-sky-100 text-gray-800 dark:bg-gray-700 dark:border-gray-600 dark:hover:bg-gray-600 dark:text-gray-50 shadow-md";
             if (isMatched) {
               cls =
-                "bg-green-100 text-green-700 border-green-400 pointer-events-none opacity-60 dark:bg-green-900 dark:text-green-300 dark:border-green-600";
+                "bg-green-100 text-green-700 border-green-400 pointer-events-none opacity-50 dark:bg-green-900 dark:text-green-300 dark:border-green-600 shadow-inner";
             } else if (isIncorrect) {
               cls =
-                "bg-red-200 text-red-700 border-red-500 shake-animation dark:bg-red-800 dark:text-red-300 dark:border-red-600";
+                "bg-red-200 text-red-700 border-red-500 shake-animation-hard dark:bg-red-800 dark:text-red-300 dark:border-red-600 shadow-xl"; // Усиленная анимация
             } else if (selectedLeft) {
+              // Подсветка доступных для выбора правых плиток
               cls =
-                "bg-sky-50 border-2 border-sky-300 hover:bg-sky-100 shadow-sm dark:bg-gray-700 dark:border-sky-500 dark:hover:bg-gray-600 dark:text-gray-50";
+                "bg-sky-100 border-2 border-sky-400 hover:bg-sky-200 shadow-lg dark:bg-sky-700 dark:border-sky-500 dark:hover:bg-sky-600 dark:text-gray-50";
             }
 
             return (
@@ -487,7 +485,7 @@ export default function MatchingMode() {
                 key={w.de + "right"}
                 disabled={isMatched || !selectedLeft || currentLives <= 0}
                 onClick={() => handleRightSelect(w)}
-                className={`p-3 rounded-lg text-lg font-medium text-center transition duration-150 ${cls}`}
+                className={`p-3 rounded-xl text-lg font-medium text-center transition duration-150 ${cls}`}
               >
                 {w.ru}
               </button>
@@ -500,11 +498,11 @@ export default function MatchingMode() {
       <style>{`
         @keyframes shake {
           0%, 100% { transform: translateX(0); }
-          20%, 60% { transform: translateX(-5px); }
-          40%, 80% { transform: translateX(5px); }
+          10%, 50% { transform: translateX(-8px); } /* Усиливаем тряску */
+          30%, 70% { transform: translateX(8px); }
         }
-        .shake-animation {
-          animation: shake 0.4s ease-in-out;
+        .shake-animation-hard {
+          animation: shake 0.3s ease-in-out;
         }
       `}</style>
     </div>

@@ -5,28 +5,17 @@ import {
   markLearned,
   clearLessonProgress,
 } from "../../store/words/progressSlice";
-// import { selectLesson } from "../../store/words/wordsSlice"; // Убрал, так как LessonPage уже диспатчит
 import { lessons } from "../../data";
-import StudyCompletionModal from "../../components/StudyCompletionModal";
 
+import LessonComplete from "../../components/LessonComplete";
 import {
   HiArrowLeft,
   HiArrowRight,
   HiCheck,
   HiOutlineRefresh,
-  HiVolumeUp,
-  HiVolumeOff,
 } from "react-icons/hi";
 
-import LessonComplete from "../../components/LessonComplete";
-
-const MAX_SESSION_SIZE = 7;
-
-// const LANG_STORAGE_KEY = "selectedTtsLang"; // 🔴 Больше не используется напрямую
-const VOICE_STORAGE_KEY = "selectedTtsVoiceName";
-const AUTOPLAY_STORAGE_KEY = "flashcardsAutoPlay";
-
-// ... (flipCardStyles и flipCardInnerStyles остаются без изменений)
+// --- СТИЛИ ДЛЯ АНИМАЦИИ ПЕРЕВОРАЧИВАНИЯ (Без изменений) ---
 const flipCardStyles = {
   perspective: "1000px",
   width: "100%",
@@ -55,16 +44,15 @@ const flipCardFaceStyles = {
   justifyContent: "center",
   padding: "2rem",
 };
+// ------------------------------------------
 
 export default function FlashCardsMode() {
   const { lessonId } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  // 1. 💡 ИЗВЛЕКАЕМ ЯЗЫК УРОКА ИЗ REDUX (путь: words -> navigation -> currentLessonLang)
-  const { list, currentLessonLang } = useSelector(
-    (state) => state.words.navigation
-  );
+  // 1. 💡 REDUX СОСТОЯНИЯ
+  const { list } = useSelector((state) => state.words.navigation);
 
   const {
     learnedFlashcards,
@@ -77,66 +65,9 @@ export default function FlashCardsMode() {
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [sessionList, setSessionList] = useState([]);
-  const [isSessionComplete, setIsSessionComplete] = useState(false);
   const [restartCount, setRestartCount] = useState(0);
 
-  const [isAutoPlayEnabled, setIsAutoPlayEnabled] = useState(() => {
-    return localStorage.getItem(AUTOPLAY_STORAGE_KEY) === "true";
-  });
-
-  // --- ЛОГИКА TTS (Прослушивание) ---
-  const activeLangCode = useMemo(() => {
-    // 2. 💥 ИСПОЛЬЗУЕМ ЯЗЫК ИЗ REDUX, а если его нет (редкий случай), берем 'de' по умолчанию.
-    return currentLessonLang || "de";
-  }, [currentLessonLang]); // Зависимость от языка урока
-
-  const savedVoiceName = useMemo(() => {
-    return localStorage.getItem(VOICE_STORAGE_KEY) || "";
-  }, []);
-
-  const [voices, setVoices] = useState([]);
-  const [selectedWordVoice, setSelectedWordVoice] = useState(null);
-
-  useEffect(() => {
-    const loadVoices = () => setVoices(window.speechSynthesis.getVoices());
-    loadVoices();
-    window.speechSynthesis.onvoiceschanged = loadVoices;
-  }, []);
-
-  // 3. 💡 ОБНОВЛЕНИЕ ГОЛОСА ПРИ ИЗМЕНЕНИИ activeLangCode
-  useEffect(() => {
-    if (voices.length > 0) {
-      let voiceFound = null;
-
-      if (savedVoiceName) {
-        // Ищем сохраненный голос, соответствующий активному языку
-        voiceFound = voices.find(
-          (v) => v.name === savedVoiceName && v.lang.startsWith(activeLangCode)
-        );
-      }
-
-      if (!voiceFound) {
-        // Ищем первый попавшийся голос для активного языка
-        const defaultVoice = voices.find((v) =>
-          v.lang.startsWith(activeLangCode)
-        );
-        voiceFound = defaultVoice || null;
-      }
-      setSelectedWordVoice(voiceFound);
-    }
-  }, [voices, activeLangCode, savedVoiceName]); // activeLangCode теперь управляется Redux
-
-  const toggleAutoPlay = useCallback(() => {
-    setIsAutoPlayEnabled((prev) => {
-      const newState = !prev;
-      localStorage.setItem(AUTOPLAY_STORAGE_KEY, newState ? "true" : "false");
-      if (!newState) {
-        window.speechSynthesis.cancel();
-      }
-      return newState;
-    });
-  }, []);
-
+  // 💡 ЛОГИКА ФИЛЬТРАЦИИ И ПОЛУЧЕНИЯ НЕВЫУЧЕННЫХ СЛОВ
   const getRemainingList = useCallback(() => {
     const allLearnedWords = [
       ...learnedFlashcards,
@@ -151,6 +82,7 @@ export default function FlashCardsMode() {
     return (
       list?.filter((word) => {
         const key = `${word.de}-${word.lessonId}`;
+        // Фильтруем по ID урока и исключаем выученные слова
         return word.lessonId === lessonId && !learnedSet.has(key);
       }) || []
     );
@@ -168,73 +100,64 @@ export default function FlashCardsMode() {
     () => getRemainingList(),
     [getRemainingList]
   );
+  // 💡 Общее количество невыученных слов теперь используется для прогресса
   const totalRemaining = finalRemainingList.length;
 
   const current = sessionList[index];
 
-  // 🔴 УДАЛЕН НЕПРАВИЛЬНЫЙ ДИСПАТЧ:
-  // Мы предполагаем, что LessonPage уже диспатчил selectLesson с правильным языком.
-  /*
-  useEffect(() => {
-    if ((!list || list.length === 0) && lessons[lessonId]) {
-      dispatch(selectLesson({ words: lessons[lessonId], lessonId }));
-    }
-  }, [list, dispatch, lessonId]);
-  */
-
-  const loadNewBatch = useCallback(() => {
+  // 💡 ЛОГИКА ЗАГРУЗКИ НОВЫХ СЛОВ (ВСЕХ ОСТАВШИХСЯ)
+  const loadNewWords = useCallback(() => {
     const actualRemainingList = finalRemainingList;
     if (actualRemainingList.length > 0) {
-      const initialBatch = actualRemainingList.slice(0, MAX_SESSION_SIZE);
-      setSessionList(initialBatch);
+      // ✅ БЕРЕМ ВЕСЬ СПИСОК СЛОВ
+      setSessionList(actualRemainingList);
       setIndex(0);
       setFlipped(false);
-      setIsSessionComplete(false);
     } else if (list && list.length > 0) {
-      setIsSessionComplete(true);
       setSessionList([]);
     }
   }, [finalRemainingList, list]);
 
+  // Загрузка слов при первом рендере или изменении списка
   useEffect(() => {
+    // 💡 При изменении finalRemainingList (т.е., когда слово помечено как выученное),
+    // мы должны обновить sessionList, чтобы оно отражало новый, меньший список.
     if (finalRemainingList.length > 0) {
-      const currentBatchKeys = sessionList
-        .map((w) => `${w.de}-${w.lessonId}`)
-        .join(",");
-      const newBatchKeys = finalRemainingList
-        .slice(0, MAX_SESSION_SIZE)
-        .map((w) => `${w.de}-${w.lessonId}`)
-        .join(",");
-
+      // Если текущий sessionList не равен finalRemainingList, или он пуст, или рестарт
       if (
-        currentBatchKeys !== newBatchKeys ||
-        sessionList.length === 0 ||
+        sessionList.length !== finalRemainingList.length ||
         restartCount > 0
       ) {
-        loadNewBatch();
+        loadNewWords();
       }
+    } else if (list && list.length > 0 && sessionList.length > 0) {
+      // Если finalRemainingList пуст, но sessionList еще нет, очищаем, чтобы сработал LessonComplete
+      setSessionList([]);
     }
     setRestartCount(0);
   }, [
     finalRemainingList,
     list,
-    loadNewBatch,
+    loadNewWords,
     restartCount,
     sessionList.length,
+    sessionList,
   ]);
 
+  // 💡 ПОВТОРНЫЙ ЦИКЛ, ЕСЛИ ПРОЙДЕН КОНЕЦ СПИСКА (без разбиения)
   useEffect(() => {
     if (sessionList.length > 0 && index >= sessionList.length) {
-      setIndex(sessionList.length - 1);
+      // Если прошли все слова в текущем sessionList (которые являются всеми невыученными словами)
+      // Начинаем цикл с начала.
+      setIndex(0);
       setFlipped(false);
-      setIsSessionComplete(true);
     }
   }, [index, sessionList.length]);
 
   const handleRestartSession = useCallback(() => {
-    loadNewBatch();
+    loadNewWords();
     setRestartCount((prev) => prev + 1);
-  }, [loadNewBatch]);
+  }, [loadNewWords]);
 
   const handleRepeatLesson = useCallback(() => {
     if (
@@ -247,69 +170,42 @@ export default function FlashCardsMode() {
     }
   }, [dispatch, lessonId, handleRestartSession]);
 
+  // --- ЛОГИКА НАВИГАЦИИ И ДЕЙСТВИЙ ---
+
   const next = useCallback(() => {
     setFlipped(false);
-    window.speechSynthesis.cancel();
-    if (index < sessionList.length) setIndex((i) => i + 1);
-  }, [sessionList.length, index]);
+    // Просто переходим к следующему индексу. useEffect выше позаботится о цикле.
+    setIndex((i) => i + 1);
+  }, []);
 
   const prev = useCallback(() => {
     setFlipped(false);
-    window.speechSynthesis.cancel();
     setIndex((i) => (i - 1 >= 0 ? i - 1 : 0));
   }, []);
 
   const handleKnow = () => {
     if (current) {
-      window.speechSynthesis.cancel();
+      // Отмечаем как выученное в режиме "flashcards"
       dispatch(markLearned({ word: current, mode: "flashcards" }));
+
+      // 💡 После пометки, мы должны перейти к следующему слову,
+      // а `useEffect` (который следит за `finalRemainingList`) обновит
+      // `sessionList` в следующем цикле рендера, удалив помеченное слово.
       next();
     }
   };
 
   const handleFlip = () => {
-    window.speechSynthesis.cancel();
     setFlipped((f) => !f);
   };
 
-  const handleMarkAllAsLearned = useCallback(() => {
-    sessionList.forEach((word) =>
-      dispatch(markLearned({ word, mode: "flashcards" }))
-    );
-    handleRestartSession();
-  }, [sessionList, dispatch, handleRestartSession]);
-
-  const handleCloseModal = () => handleRestartSession();
-
   const handleGoBack = () => {
-    window.speechSynthesis.cancel();
     navigate(`/lesson/${lessonId}`);
   };
 
-  // 4. 💡 Используем активный язык для получения слова (хотя для TTS важен activeLangCode)
-  const wordText = current?.[activeLangCode] || current?.de;
+  // --- ЭКРАНЫ ЗАВЕРШЕНИЯ / ЗАГРУЗКИ ---
 
-  // 💡 АВТОМАТИЧЕСКОЕ ВОСПРОИЗВЕДЕНИЕ (С УСЛОВИЕМ)
-  useEffect(() => {
-    window.speechSynthesis.cancel();
-
-    if (current && selectedWordVoice && !flipped && isAutoPlayEnabled) {
-      try {
-        const utterance = new SpeechSynthesisUtterance(wordText);
-        // 5. 💡 Устанавливаем язык для воспроизведения, используя язык, найденный в голосе
-        // Это гарантирует, что используется язык, соответствующий lessonId
-        utterance.lang = selectedWordVoice.lang;
-        utterance.voice = selectedWordVoice;
-        utterance.rate = 0.8;
-        window.speechSynthesis.speak(utterance);
-      } catch (e) {
-        console.error("TTS failed:", e);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current, selectedWordVoice, flipped, isAutoPlayEnabled]);
-  // -------------------------------------------------------------------
-
+  // Экран полного завершения урока (срабатывает, если finalRemainingList.length === 0)
   if (finalRemainingList.length === 0 && list && list.length > 0)
     return (
       <LessonComplete
@@ -319,63 +215,20 @@ export default function FlashCardsMode() {
       />
     );
 
-  if (isSessionComplete)
-    return (
-      <StudyCompletionModal
-        wordsToLearn={sessionList}
-        onRestart={handleRestartSession}
-        onClose={handleCloseModal}
-        onMarkAll={handleMarkAllAsLearned}
-        modeName={`Флеш-карты (Батч ${MAX_SESSION_SIZE})`}
-        isBatchComplete={
-          finalRemainingList.length > MAX_SESSION_SIZE ||
-          (finalRemainingList.length > 0 &&
-            finalRemainingList.length <= MAX_SESSION_SIZE)
-        }
-      />
-    );
+  // Экран загрузки (когда current не определен, но еще не сработал LessonComplete)
+  if (!current || sessionList.length === 0) return null;
 
-  if (!current) return null;
-
+  // --- ОСНОВНОЙ РЕНДЕРИНГ ФЛЕШ-КАРТЫ ---
   return (
     <div className="flex flex-col items-center p-4 sm:p-6 w-full bg-gray-50 min-h-[calc(100vh-64px)] dark:bg-gray-900 transition-colors duration-300">
-      {/* 💡 НОВЫЙ КОНТЕЙНЕР ДЛЯ ПРОГРЕССА И КНОПКИ УПРАВЛЕНИЯ */}
+      {/* 💡 КОНТЕЙНЕР ДЛЯ ПРОГРЕССА */}
       <div className="w-full max-w-sm mb-6">
-        {/* 1. КНОПКА ВКЛ/ВЫКЛ АВТОВОСПРОИЗВЕДЕНИЯ (СЛЕВА) */}
-        <div className="flex justify-between items-center mb-4">
-          <button
-            onClick={toggleAutoPlay}
-            className={`p-2 rounded-lg text-sm shadow-md transition duration-150 flex items-center ${
-              isAutoPlayEnabled
-                ? "bg-sky-500 text-white hover:bg-sky-600"
-                : "bg-gray-300 text-gray-800 hover:bg-gray-400 dark:bg-gray-700 dark:text-gray-50 dark:hover:bg-gray-600"
-            }`}
-            title={
-              isAutoPlayEnabled
-                ? "Отключить автовоспроизведение"
-                : "Включить автовоспроизведение"
-            }
-          >
-            {isAutoPlayEnabled ? (
-              <HiVolumeUp className="w-5 h-5" />
-            ) : (
-              <HiVolumeOff className="w-5 h-5" />
-            )}
-            <span className="ml-2 font-semibold hidden sm:inline">
-              {isAutoPlayEnabled ? "Авто Вкл" : "Авто Выкл"}
-            </span>
-          </button>
-
-          {/* Дополнительный элемент для выравнивания */}
-          <div className="text-xs text-gray-500 dark:text-gray-400">
-            {/* Можно добавить что-то еще, или оставить пустым */}
-          </div>
-        </div>
-
-        {/* 2. ИНДИКАТОР ПРОГРЕССА */}
-        <div className="w-full text-center">
+        {/* ИНДИКАТОР ПРОГРЕССА */}
+        <div className="w-full text-center mt-8">
+          {" "}
           <div className="text-sm font-medium text-gray-600 mb-2 dark:text-gray-400">
-            Прогресс **батча**: {index + 1} из {sessionList.length}
+            {/* 💡 Показываем прогресс внутри текущего цикла */}
+            Слово: {index + 1} из {sessionList.length}
             <span className="block text-xs text-gray-400 mt-1 dark:text-gray-500">
               Осталось всего невыученных: {totalRemaining}
             </span>
@@ -390,6 +243,7 @@ export default function FlashCardsMode() {
       </div>
       {/* ---------------------------------------------------- */}
 
+      {/* ФЛЕШ-КАРТА */}
       <div
         style={flipCardStyles}
         onClick={handleFlip}
@@ -401,13 +255,17 @@ export default function FlashCardsMode() {
             transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
           }}
         >
+          {/* ЛИЦЕВАЯ СТОРОНА (ИЗУЧАЕМЫЙ ЯЗЫК) */}
           <div
             style={flipCardFaceStyles}
             className="bg-sky-500 text-white shadow-xl flex-col"
           >
-            <span className="text-4xl font-bold mb-4">{wordText}</span>
+            <span className="text-4xl font-bold mb-4">
+              {current.de.toUpperCase()}
+            </span>
           </div>
 
+          {/* ОБРАТНАЯ СТОРОНА (ПЕРЕВОД) */}
           <div
             style={{ ...flipCardFaceStyles, transform: "rotateY(180deg)" }}
             className="bg-white text-gray-800 shadow-xl border-2 border-sky-500 dark:bg-gray-700 dark:text-gray-50 dark:border-sky-600"
@@ -417,7 +275,9 @@ export default function FlashCardsMode() {
         </div>
       </div>
 
+      {/* КНОПКИ УПРАВЛЕНИЯ */}
       <div className="flex flex-wrap justify-center gap-3 w-full max-w-sm">
+        {/* ПЕРЕВЕРНУТЬ */}
         <button
           onClick={handleFlip}
           className="flex items-center justify-center w-full sm:w-auto px-4 py-3 bg-sky-200 text-sky-800 rounded-xl font-semibold hover:bg-sky-300 transition duration-150 dark:bg-sky-800 dark:text-sky-300 dark:hover:bg-sky-700"
@@ -426,6 +286,7 @@ export default function FlashCardsMode() {
           {flipped ? "Скрыть перевод" : "Перевернуть"}
         </button>
 
+        {/* НАЗАД / ДАЛЕЕ */}
         <div className="flex justify-between w-full sm:w-auto sm:space-x-3 mt-3 sm:mt-0">
           <button
             onClick={prev}
@@ -440,18 +301,21 @@ export default function FlashCardsMode() {
             className="flex-1 sm:flex-none flex items-center justify-center px-4 py-3 bg-white rounded-xl shadow-md text-gray-600 font-semibold hover:bg-gray-100 transition duration-150 ml-3 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 dark:shadow-none"
           >
             <span className="mr-2 hidden sm:inline">
-              {index === sessionList.length - 1 ? "Завершить батч" : "Далее"}
+              {/* Если индекс на последнем слове, показываем "Повторить цикл", иначе "Далее" */}
+              {index === sessionList.length - 1 ? "Сначала" : "Далее"}
             </span>
             <HiArrowRight className="w-5 h-5" />
           </button>
         </div>
 
+        {/* Я ЗНАЮ ЭТО СЛОВО (МАРКИРОВКА И СКИП) */}
         <button
           onClick={handleKnow}
           className="w-full mt-3 sm:mt-0 px-4 py-3 bg-green-600 text-white rounded-xl font-bold text-lg shadow-lg hover:bg-green-700 transition duration-150 dark:bg-green-700 dark:hover:bg-green-800"
         >
           <div className="flex items-center justify-center">
-            <HiCheck className="w-6 h-6 mr-2" />Я знаю это слово! (Скип)
+            <HiCheck className="w-6 h-6 mr-2" />Я знаю это слово! (Удалить из
+            списка)
           </div>
         </button>
       </div>
